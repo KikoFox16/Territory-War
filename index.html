@@ -24,7 +24,7 @@
 /* Bouton Debug Flottant - Version Haut Droite */
 #debug-btn {
     position: absolute;
-    top: 110px;          /* Placé en haut */
+    top: 130px;          /* Placé en haut */
     right: 20px;        /* À droite */
     z-index: 1500;
     
@@ -532,6 +532,84 @@ function createZoneRectangle(zId, zone) {
             checkCurrentZoneContext();
         }
 
+// --- Gestion du Shop ---
+const shopBtn = document.getElementById('shop-toggle-btn');
+const shopScreen = document.getElementById('shop-screen');
+const closeShop = document.getElementById('close-shop');
+const shopList = document.getElementById('shop-list');
+const shopSort = document.getElementById('shop-sort');
+
+shopBtn.onclick = () => {
+    shopScreen.classList.remove('hidden');
+    renderShop();
+};
+
+closeShop.onclick = () => shopScreen.classList.add('hidden');
+
+shopSort.onchange = () => renderShop();
+
+function renderShop() {
+    shopList.innerHTML = "";
+    
+    // 1. Filtrer les zones qui sont à vendre
+    let forSale = [];
+    for (let id in allZones) {
+        if (allZones[id].forSale) {
+            forSale.push({ id: id, ...allZones[id] });
+        }
+    }
+
+    if (forSale.length === 0) {
+        shopList.innerHTML = "<p style='color:#888;'>Aucune zone en vente pour le moment.</p>";
+        return;
+    }
+
+    // 2. Trier les zones
+    const criteria = shopSort.value;
+    forSale.sort((a, b) => {
+        if (criteria === "price_asc") return a.price - b.price;
+        if (criteria === "price_desc") return b.price - a.price;
+        if (criteria === "level_asc") return (a.level || 1) - (b.level || 1);
+        if (criteria === "level_desc") return (b.level || 1) - (a.level || 1);
+    });
+
+    // 3. Afficher les zones
+    forSale.forEach(zone => {
+        const owner = allUsers[zone.ownerId] || { username: "Inconnu", color: "#ccc" };
+        const item = document.createElement('div');
+        item.style.cssText = "background: #1a1a1a; padding: 12px; border-radius: 10px; border-left: 5px solid " + owner.color + "; display: flex; justify-content: space-between; align-items: center; text-align: left;";
+        
+        item.innerHTML = `
+            <div>
+                <div style="font-weight: bold;">Zone ${zone.id}</div>
+                <div style="font-size: 0.8rem; color: #aaa;">Vendeur: ${owner.username} | Niv: ${zone.level || 1}</div>
+                <div style="color: #f1c40f; font-weight: bold;">💰 ${zone.price}</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+                <button style="padding: 5px 10px; font-size: 0.7rem; margin:0;" onclick="window.goToZone('${zone.id}')">Voir</button>
+                <button style="padding: 5px 10px; font-size: 0.7rem; margin:0; background:#2ecc71;" ${myUser.coins < zone.price ? 'disabled' : ''} onclick="window.buyInShop('${zone.id}')">Acheter</button>
+            </div>
+        `;
+        shopList.appendChild(item);
+    });
+}
+
+// Rendre les fonctions accessibles aux boutons HTML dynamiques
+window.goToZone = (id) => {
+    const bounds = getBoundsFromZoneId(id);
+    map.fitBounds(bounds); // Zoom sur la zone
+    selectZone(id); // Ouvre le panel d'info
+    shopScreen.classList.add('hidden'); // Ferme le shop
+};
+
+window.buyInShop = (id) => {
+    if (confirm(`Voulez-vous acheter la zone ${id} ?`)) {
+        buyZone(id, allZones[id]);
+        setTimeout(renderShop, 500); // Rafraîchir après achat
+    }
+};
+    
+    
 function checkCurrentZoneContext() {
     if (!currentZoneId) return;
 
@@ -851,5 +929,62 @@ function checkCurrentZoneContext() {
     
     <button id="debug-btn" title="Debug / Refresh">​👾</button>
 
+    <button id="shop-toggle-btn" title="Marché Mondial">🛒</button>
+
+<style>
+#shop-toggle-btn {
+    position: absolute;
+    top: 180px;         /* Placé juste en dessous du bouton Debug (110px + 45px + marge) */
+    right: 20px;
+    z-index: 1500;
+    
+    width: 45px; 
+    height: 45px; 
+    
+    border-radius: 50%;
+    background: rgba(44, 62, 80, 0.9); /* Gris foncé bleuté identique au debug */
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    font-size: 1.2rem;
+    
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    backdrop-filter: blur(5px);
+    transition: all 0.2s;
+    padding: 0;
+}
+
+#shop-toggle-btn:active { 
+    transform: scale(0.9); 
+    background: #34495e; 
+}
+</style>
+
+<div id="shop-screen" class="screen hidden" style="z-index: 3000;">
+    <div class="panel" style="width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; pointer-events: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin:0;">Marché Mondial</h2>
+            <button id="close-shop" style="width: auto; padding: 5px 15px; margin: 0; background: #e74c3c;">X</button>
+        </div>
+
+        <div style="margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+            <select id="shop-sort" style="padding: 8px; border-radius: 5px; background: #222; color: white; border: 1px solid #444;">
+                <option value="price_asc">Prix croissant</option>
+                <option value="price_desc">Prix décroissant</option>
+                <option value="level_asc">Niveau croissant</option>
+                <option value="level_desc">Niveau décroissant</option>
+            </select>
+        </div>
+
+        <div id="shop-list" style="display: flex; flex-direction: column; gap: 10px;">
+            </div>
+    </div>
+</div>
+
+    
 </body>
 </html>
