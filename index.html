@@ -122,7 +122,7 @@
             <div id="player-info" class="panel">
                 <div id="coins-display">💰 0</div>
                 <div id="zone-count-display">🚩 0 territoires</div>
-                <div style="font-size: 0.8rem; color:#aaa; margin-top:5px;">+<span id="income-display">0</span>/5h</div>
+                <div style="font-size: 0.8rem; color:#aaa; margin-top:5px;">+<span id="income-display">0</span>/1h</div>
             </div>
             
             <div id="leaderboard" class="panel">
@@ -198,9 +198,9 @@
         let captureTimer = 0;
         let captureInterval = null;
         let incomeInterval = null;
-        const TIME_FREE = 60; // 1 minutes en secondes
-        const TIME_STEAL = 300; // 5 minutes en secondes
-        const INCOME_INTERVAL_MS = 5 * 60 * 60 * 1000; // 5 h
+        const TIME_FREE = 60; // 2 minutes en secondes
+        const TIME_STEAL = 300; // 15 minutes en secondes
+        const INCOME_INTERVAL_MS = 5 * 60 * 60 * 1000; // 1 h
 
         // --- Initialisation ---
         window.onload = () => {
@@ -452,7 +452,17 @@ function renderZonesMap() {
 
     if (!playerPos) return;
 
-    // 2. Définition de la grille autour du joueur
+    // --- ÉTAPE A : Afficher TOUTES mes zones (partout dans le monde) ---
+    Object.keys(allZones).forEach(zId => {
+        const zone = allZones[zId];
+        
+        // Si la zone m'appartient, je l'affiche peu importe la distance
+        if (zone.ownerId === myUser.uid) {
+            createZoneRectangle(zId, zone);
+        }
+    });
+
+    // --- ÉTAPE B : Afficher la grille locale (alentours du joueur) ---
     const pLatIdx = Math.floor(playerPos.lat / GRID_STEP_LAT);
     const pLngIdx = Math.floor(playerPos.lng / GRID_STEP_LNG);
     const range = 20; 
@@ -460,38 +470,54 @@ function renderZonesMap() {
     for (let i = -range; i <= range; i++) {
         for (let j = -range; j <= range; j++) {
             const zId = `${pLatIdx + i}_${pLngIdx + j}`;
-            const bounds = getBoundsFromZoneId(zId);
+            
+            // Si le rectangle existe déjà (parce que c'est une de mes zones), on ne le recrée pas
+            if (zoneRectangles[zId]) continue;
+
             const zone = allZones[zId];
-
-            // Style par défaut (Zone vide)
-            let style = {
-                color: '#aaa',
-                weight: 1,
-                fillOpacity: 0.05,
-                interactive: true
-            };
-
-            // Style si la zone est occupée
-            if (zone) {
-                const owner = allUsers[zone.ownerId];
-                style.color = owner ? owner.color : '#555';
-                style.weight = zone.level ? zone.level * 2 : 2;
-                style.fillOpacity = zone.forSale ? 0.6 : 0.3;
-                if (zone.forSale) style.dashArray = '5, 5';
-            }
-
-            // Création du rectangle UNIQUE
-            const rect = L.rectangle(bounds, style).addTo(map);
-            zoneRectangles[zId] = rect;
-
-            // Gestion du clic
-            rect.on('click', (e) => {
-                L.DomEvent.stopPropagation(e);
-                selectZone(zId);
-            });
+            createZoneRectangle(zId, zone);
         }
     }
 }
+
+function createZoneRectangle(zId, zone) {
+    const bounds = getBoundsFromZoneId(zId);
+    
+    // Style par défaut (Zone vide)
+    let style = {
+        color: '#aaa',
+        weight: 1,
+        fillOpacity: 0.05,
+        interactive: true
+    };
+
+    // Style si la zone est occupée
+    if (zone) {
+        const owner = allUsers[zone.ownerId];
+        style.color = owner ? owner.color : '#555';
+        style.weight = zone.level ? zone.level * 2 : 2;
+        style.fillOpacity = zone.forSale ? 0.6 : 0.3;
+        
+        // Effet visuel spécial si c'est MA zone (contour doré ou plus épais)
+        if (zone.ownerId === myUser.uid) {
+            style.weight = (zone.level || 1) * 3;
+            style.fillOpacity = 0.5;
+        }
+        
+        if (zone.forSale) style.dashArray = '5, 5';
+    }
+
+    const rect = L.rectangle(bounds, style).addTo(map);
+    zoneRectangles[zId] = rect;
+
+    // Gestion du clic
+    rect.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        selectZone(zId);
+    });
+}
+    
+    
 
 
         // --- Logique de Zone & Capture ---
