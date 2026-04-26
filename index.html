@@ -75,10 +75,50 @@
         #coins-display { color: #f1c40f; font-size: 1.5rem; font-weight: bold; }
         #zone-count-display { color: #2ecc71; font-size: 1.1rem; }
 
-        #leaderboard { text-align: right; min-width: 150px; }
-        #leaderboard h3 { margin: 0 0 10px 0; font-size: 1rem; color: #aaa; text-transform: uppercase; }
-        .lb-entry { font-size: 0.9rem; margin-bottom: 5px; display: flex; justify-content: space-between; gap: 15px;}
-        .lb-color { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; }
+        #leaderboard { 
+    text-align: right; 
+    min-width: 140px; 
+    max-width: 180px; /* Empêche le panneau de prendre tout l'écran */
+}
+
+#leaderboard h3 { 
+    margin: 0 0 8px 0; 
+    font-size: 0.8rem; 
+    color: #aaa; 
+    text-transform: uppercase; 
+}
+
+.lb-entry { 
+    font-size: 0.85rem; 
+    margin-bottom: 4px; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+    white-space: nowrap; /* Force le texte sur une seule ligne */
+    gap: 8px;
+}
+
+/* On stylise le nom pour qu'il se coupe proprement s'il est trop long */
+.lb-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 80px; 
+}
+
+.lb-color { 
+    display: inline-block; 
+    width: 10px; 
+    height: 10px; 
+    border-radius: 50%; 
+    margin-right: 5px; 
+    flex-shrink: 0; /* Empêche le point de s'écraser */
+}
+
+.lb-score {
+    font-weight: bold;
+    color: #2ecc71;
+    flex-shrink: 0; /* Le score ne doit jamais rétrécir */
+}
 
         /* --- Info de la zone actuelle --- */
         #zone-panel { align-self: center; width: 100%; max-width: 400px; text-align: center; margin-bottom: 10px; }
@@ -122,7 +162,7 @@
             <div id="player-info" class="panel">
                 <div id="coins-display">💰 0</div>
                 <div id="zone-count-display">🚩 0 territoires</div>
-                <div style="font-size: 0.8rem; color:#aaa; margin-top:5px;">+<span id="income-display">0</span>/1h</div>
+                <div style="font-size: 0.8rem; color:#aaa; margin-top:5px;">+<span id="income-display">0</span>/24h</div>
             </div>
             
             <div id="leaderboard" class="panel">
@@ -200,7 +240,7 @@
         let incomeInterval = null;
         const TIME_FREE = 60; // 2 minutes en secondes
         const TIME_STEAL = 300; // 15 minutes en secondes
-        const INCOME_INTERVAL_MS = 5 * 60 * 60 * 1000; // 1 h
+        const INCOME_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
 
         // --- Initialisation ---
         window.onload = () => {
@@ -272,37 +312,35 @@ function startGame() {
 
 // --- FONCTION DE CALCUL HORS-LIGNE (Sortie de startGame) ---
 async function offlineIncomeCheck() {
-    // On récupère les données fraîches de l'utilisateur
     if (!myUser.uid || !myUser.lastIncomeTime) return;
 
     const now = Date.now();
     const diffMs = now - myUser.lastIncomeTime;
     
-    // Si assez de temps s'est écoulé
     if (diffMs >= INCOME_INTERVAL_MS) {
         const intervalsPassed = Math.floor(diffMs / INCOME_INTERVAL_MS);
         
-        // Calcul du revenu actuel basé sur les zones possédées
+        // Calcul du revenu journalier total
         let myZones = Object.values(allZones).filter(z => z.ownerId === myUser.uid);
         
         if (myZones.length > 0) {
-            let incomePerInterval = myZones.reduce((acc, z) => acc + 5 + (((z.level||1) - 1) * 3), 0);
-            let totalOfflineIncome = incomePerInterval * intervalsPassed;
+            let dailyIncome = myZones.reduce((acc, z) => acc + 5 + (((z.level||1) - 1) * 3), 0);
+            let totalOfflineIncome = dailyIncome * intervalsPassed;
 
             if (totalOfflineIncome > 0) {
-                // On prévient l'utilisateur
-                alert(`💰 REVENUS D'ABSENCE : +${totalOfflineIncome} pièces pour ${intervalsPassed}h de production !`);
+                alert(`💰 RÉCOLTE QUOTIDIENNE : +${totalOfflineIncome} pièces pour vos ${intervalsPassed} jour(s) de domination !`);
                 
                 const updates = {};
-                // Attention : on ajoute au montant actuel de la DB pour éviter d'écraser des données
                 updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + totalOfflineIncome;
-                updates[`users/${myUser.uid}/lastIncomeTime`] = now; 
+                // On met à jour le temps en soustrayant le reliquat de temps pour ne pas léser le joueur
+                updates[`users/${myUser.uid}/lastIncomeTime`] = now - (diffMs % INCOME_INTERVAL_MS); 
                 
                 await update(ref(db), updates);
             }
         }
     }
 }
+
 
 
         function initMap() {
@@ -579,17 +617,27 @@ function renderShop() {
         const item = document.createElement('div');
         item.style.cssText = "background: #1a1a1a; padding: 12px; border-radius: 10px; border-left: 5px solid " + owner.color + "; display: flex; justify-content: space-between; align-items: center; text-align: left;";
         
-        item.innerHTML = `
-            <div>
-                <div style="font-weight: bold;">Zone ${zone.id}</div>
-                <div style="font-size: 0.8rem; color: #aaa;">Vendeur: ${owner.username} | Niv: ${zone.level || 1}</div>
-                <div style="color: #f1c40f; font-weight: bold;">💰 ${zone.price}</div>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 5px;">
-                <button style="padding: 5px 10px; font-size: 0.7rem; margin:0;" onclick="window.goToZone('${zone.id}')">Voir</button>
-                <button style="padding: 5px 10px; font-size: 0.7rem; margin:0; background:#2ecc71;" ${myUser.coins < zone.price ? 'disabled' : ''} onclick="window.buyInShop('${zone.id}')">Acheter</button>
-            </div>
-        `;
+            // Dans renderShop(), modifie le style du bouton ACHETER :
+item.innerHTML = `
+    <div>
+        <div style="font-weight: bold;">Zone ${zone.id}</div>
+        <div style="font-size: 0.8rem; color: #aaa;">Vendeur: ${owner.username} | Niv: ${zone.level || 1}</div>
+        <div style="color: #f1c40f; font-weight: bold;">💰 ${zone.price}</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 5px; min-width: 100px;">
+        <button style="padding: 5px 10px; font-size: 0.7rem; margin:0;" onclick="window.goToZone('${zone.id}')">VOIR</button>
+        
+        <button 
+            style="padding: 0; height: 35px; font-size: 0.7rem; margin:0; background:#2ecc71; 
+                   display: flex; align-items: center; justify-content: center; text-align: center;" 
+            ${myUser.coins < zone.price ? 'disabled' : ''} 
+            onclick="window.buyInShop('${zone.id}')"
+        >
+            ACHETER
+        </button>
+    </div>
+`;
+
         shopList.appendChild(item);
     });
 }
@@ -757,7 +805,7 @@ function checkCurrentZoneContext() {
             myZones.forEach(z => {
                 let lvl = z.level || 1;
                 // Base 5. Lvl 2: +3 (8). Lvl 3: +3 (11). Lvl 4: +3 (14)
-                income += 5 + ((lvl - 1) * 3); 
+                income += 2 + ((lvl - 1) * 3); 
             });
 
             const updates = {};
@@ -774,7 +822,7 @@ function checkCurrentZoneContext() {
             
             // Calcul affichage revenu
             let myZones = Object.values(allZones).filter(z => z.ownerId === myUser.uid);
-            let income = myZones.reduce((acc, z) => acc + 5 + (((z.level||1) - 1) * 3), 0);
+            let income = myZones.reduce((acc, z) => acc + 2 + (((z.level||1) - 1) * 3), 0);
             document.getElementById('income-display').innerText = income;
 
             checkCurrentZoneContext(); // Met à jour les boutons si les pièces changent
@@ -872,22 +920,30 @@ function checkCurrentZoneContext() {
 }
 
 
-        function updateLeaderboard() {
-            // Convertir l'objet users en tableau et trier par zonesCount décroissant
-            const sortedUsers = Object.values(allUsers).sort((a, b) => (b.zonesCount || 0) - (a.zonesCount || 0));
-            const top3 = sortedUsers.slice(0, 3);
-            
-            const lbDiv = document.getElementById('lb-content');
-            lbDiv.innerHTML = '';
-            
-            top3.forEach((u, index) => {
-                let div = document.createElement('div');
-                div.className = 'lb-entry';
-                let medal = index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉';
-                div.innerHTML = `<span>${medal} <span class="lb-color" style="background:${u.color}"></span>${u.username}</span> <span>${u.zonesCount || 0}🚩</span>`;
-                lbDiv.appendChild(div);
-            });
-        }
+function updateLeaderboard() {
+    const sortedUsers = Object.values(allUsers).sort((a, b) => (b.zonesCount || 0) - (a.zonesCount || 0));
+    const top3 = sortedUsers.slice(0, 3);
+    
+    const lbDiv = document.getElementById('lb-content');
+    lbDiv.innerHTML = '';
+    
+    top3.forEach((u, index) => {
+        let div = document.createElement('div');
+        div.className = 'lb-entry';
+        let medal = index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉';
+        
+        div.innerHTML = `
+            <div style="display:flex; align-items:center; overflow:hidden;">
+                <span style="margin-right:4px;">${medal}</span>
+                <span class="lb-color" style="background:${u.color}"></span>
+                <span class="lb-name">${u.username}</span>
+            </div>
+            <span class="lb-score">${u.zonesCount || 0}🚩</span>
+        `;
+        lbDiv.appendChild(div);
+    });
+}
+
 
     document.getElementById('debug-btn').addEventListener('click', () => {
     console.log("🛠️ Mode Debug : Réinitialisation complète...");
