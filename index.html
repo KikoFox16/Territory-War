@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        /* --- Base & Reset --- */
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Segoe UI', Roboto, sans-serif; background-color: #111; color: #eee; overflow: hidden; }
         #map { 
             width: 100%; 
@@ -20,34 +19,30 @@
 
         .hidden { display: none !important; }
 
-    /* Bouton Debug Flottant */
-/* Bouton Debug Flottant - Version Haut Droite */
 #debug-btn {
     position: absolute;
-    top: 130px;          /* Placé en haut */
-    right: 20px;        /* À droite */
+    top: 130px;
+    right: 20px;
     z-index: 1500;
     
-    /* Dimensions identiques pour un cercle parfait */
     width: 45px; 
     height: 45px; 
     
-    border-radius: 50%; /* Rend le bouton rond */
-    background: rgba(44, 62, 80, 0.9); /* Couleur sombre stylée */
+    border-radius: 50%;
+    background: rgba(44, 62, 80, 0.9); 
     color: white;
     border: 2px solid rgba(255, 255, 255, 0.5);
     cursor: pointer;
     font-size: 1.2rem;
     
-    /* Centrage parfait de l'émoji */
     display: flex;
     justify-content: center;
     align-items: center;
     
     box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-    backdrop-filter: blur(5px); /* Effet de flou derrière le bouton */
+    backdrop-filter: blur(5px); 
     transition: all 0.2s;
-    padding: 0; /* Important pour éviter la déformation */
+    padding: 0; 
 }
 
 #debug-btn:active { 
@@ -56,7 +51,6 @@
 }
 
     
-        /* --- Écrans (Login) --- */
         .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,15,15,0.95); z-index: 2000; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px); }
         h1 { color: #fff; font-size: 3rem; margin: 0 0 20px 0; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 0 10px rgba(255,255,255,0.5); }
         input[type="text"], input[type="color"] { padding: 15px; margin: 10px 0; border-radius: 10px; border: none; font-size: 1.2rem; width: 80%; max-width: 300px; text-align: center; }
@@ -66,7 +60,6 @@
         button:disabled { background: #555; box-shadow: none; }
         .error { color: #e74c3c; margin-top: 10px; }
 
-        /* --- HUD --- */
         #hud { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; }
         .panel { background: rgba(0, 0, 0, 0.85); padding: 15px; border-radius: 15px; pointer-events: auto; backdrop-filter: blur(10px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #333; }
         
@@ -78,7 +71,7 @@
         #leaderboard { 
     text-align: right; 
     min-width: 140px; 
-    max-width: 180px; /* Empêche le panneau de prendre tout l'écran */
+    max-width: 180px; 
 }
 
 #leaderboard h3 { 
@@ -94,11 +87,10 @@
     display: flex; 
     justify-content: space-between; 
     align-items: center;
-    white-space: nowrap; /* Force le texte sur une seule ligne */
+    white-space: nowrap; 
     gap: 8px;
 }
 
-/* On stylise le nom pour qu'il se coupe proprement s'il est trop long */
 .lb-name {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -111,23 +103,21 @@
     height: 10px; 
     border-radius: 50%; 
     margin-right: 5px; 
-    flex-shrink: 0; /* Empêche le point de s'écraser */
+    flex-shrink: 0; 
 }
 
 .lb-score {
     font-weight: bold;
     color: #2ecc71;
-    flex-shrink: 0; /* Le score ne doit jamais rétrécir */
+    flex-shrink: 0; 
 }
 
-        /* --- Info de la zone actuelle --- */
         #zone-panel { align-self: center; width: 100%; max-width: 400px; text-align: center; margin-bottom: 10px; }
         #zone-status { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
         #capture-bar-bg { width: 100%; height: 20px; background: #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px; position: relative; }
         #capture-bar-fill { height: 100%; width: 0%; background: #3498db; transition: width 1s linear; }
         #capture-text { position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 0.8rem; line-height: 20px; color: white; text-shadow: 1px 1px 2px black; }
         
-        /* Style pour la grille vide */
         .grid-rect { pointer-events: none; }
     
         .action-buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
@@ -136,11 +126,9 @@
         .btn-sell { background: #e67e22; box-shadow: 0 5px 15px rgba(230, 126, 34, 0.4); }
         .btn-buy { background: #2ecc71; box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4); }
 
-        /* --- Map Markers --- */
         .player-marker { background-color: #fff; width: 16px; height: 16px; border-radius: 50%; border: 3px solid #000; box-shadow: 0 0 10px #fff; }
         .custom-div-icon { background: none; border: none; }
         
-        /* Z-Index pour Leaflet pour que les joueurs soient cliquables par-dessus les zones */
         .leaflet-marker-pane { z-index: 600 !important; }
         .leaflet-tooltip-pane { z-index: 650 !important; }
     </style>
@@ -216,37 +204,32 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // --- Variables Globales ---
         let map, playerMarker;
-        let playerPos = { lat: 48.8566, lng: 2.3522 }; // Position par défaut pour éviter les bugs au chargement
+        let playerPos = { lat: 48.8566, lng: 2.3522 }; 
         let watchId = null;
         let myUser = { uid: null, username: '', color: '', coins: 0, totalCaptured: 0, zonesCount: 0 };
         let allUsers = {};
         let allZones = {};
-        let zoneRectangles = {}; // Stocke les L.rectangle Leaflet
-        let otherPlayersMarkers = {}; // Stocke les marqueurs Leaflet des autres joueurs
+        let zoneRectangles = {}; 
+        let otherPlayersMarkers = {}; 
     
-        // Grille (Approximation : 0.0009 lat/lng = ~100m)
         const GRID_STEP_LAT = 0.0009;
         const GRID_STEP_LNG = 0.0013;
 
-        let selectedZoneId = null; // Stocke la zone que l'utilisateur regarde activement
+        let selectedZoneId = null; 
 
     
-        // Mécaniques de jeu
         let currentZoneId = null;
         let captureTimer = 0;
         let captureInterval = null;
         let incomeInterval = null;
-        const TIME_FREE = 60; // 2 minutes en secondes
-        const TIME_STEAL = 300; // 15 minutes en secondes
+        const TIME_FREE = 60; // 1 minutes
+        const TIME_STEAL = 300; // 5 minutes
         const INCOME_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
 
-        // --- Initialisation ---
         window.onload = () => {
             const savedUid = localStorage.getItem('tw_uid');
             if (savedUid) {
-                // Tentative de reconnexion
                 get(ref(db, `users/${savedUid}`)).then((snapshot) => {
                     if (snapshot.exists()) {
                         myUser = { uid: savedUid, ...snapshot.val() };
@@ -260,7 +243,6 @@
             }
         };
 
-        // --- Logique d'Authentification ---
         document.getElementById('join-btn').addEventListener('click', async () => {
             const username = document.getElementById('username-input').value.trim();
             const color = document.getElementById('color-input').value;
@@ -272,12 +254,11 @@
                 return;
             }
 
-            // Vérification simple (Pour un vrai jeu, il faut une transaction Firebase pour l'unicité)
             const uid = 'usr_' + Date.now() + Math.floor(Math.random()*1000);
             const newUser = {
                 username: username,
                 color: color,
-                coins: 0, // Pièces de départ
+                coins: 0, 
                 totalCaptured: 0,
                 zonesCount: 0,
                 lastIncomeTime: Date.now()
@@ -291,7 +272,6 @@
             startGame();
         });
 
-        // --- Lancement du jeu ---
 function startGame() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
@@ -300,17 +280,14 @@ function startGame() {
     listenToDatabase();
     startGPS();
 
-    // On attend un court instant que les données Firebase arrivent avant de calculer l'offline
     setTimeout(() => {
         offlineIncomeCheck();
     }, 2000);
 
-    // Boucle de revenus passifs (quand le jeu est ouvert)
     incomeInterval = setInterval(collectIncome, INCOME_INTERVAL_MS);
     updateHUD();
 }
 
-// --- FONCTION DE CALCUL HORS-LIGNE (Sortie de startGame) ---
 async function offlineIncomeCheck() {
     if (!myUser.uid || !myUser.lastIncomeTime) return;
 
@@ -320,7 +297,6 @@ async function offlineIncomeCheck() {
     if (diffMs >= INCOME_INTERVAL_MS) {
         const intervalsPassed = Math.floor(diffMs / INCOME_INTERVAL_MS);
         
-        // Calcul du revenu journalier total
         let myZones = Object.values(allZones).filter(z => z.ownerId === myUser.uid);
         
         if (myZones.length > 0) {
@@ -332,7 +308,6 @@ async function offlineIncomeCheck() {
                 
                 const updates = {};
                 updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + totalOfflineIncome;
-                // On met à jour le temps en soustrayant le reliquat de temps pour ne pas léser le joueur
                 updates[`users/${myUser.uid}/lastIncomeTime`] = now - (diffMs % INCOME_INTERVAL_MS); 
                 
                 await update(ref(db), updates);
@@ -360,7 +335,6 @@ async function offlineIncomeCheck() {
             const icon = L.divIcon({ className: 'custom-div-icon', html: `<div class='player-marker' style='border-color: ${myUser.color}'></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
             playerMarker = L.marker([playerPos.lat, playerPos.lng], {icon: icon}).addTo(map);
                 
-            // À ajouter dans initMap()
 map.on('click', () => {
     selectedZoneId = null;
     checkCurrentZoneContext();
@@ -368,9 +342,7 @@ map.on('click', () => {
 
         }
 
-        // --- Écoutes Firebase ---
         function listenToDatabase() {
-            // Écoute de mon profil
             onValue(ref(db, `users/${myUser.uid}`), (snapshot) => {
                 if(snapshot.exists()) {
                     myUser = { uid: myUser.uid, ...snapshot.val() };
@@ -378,26 +350,22 @@ map.on('click', () => {
                 }
             });
 
-            // Écoute de tous les utilisateurs (pour le leaderboard et les couleurs)
             onValue(ref(db, 'users'), (snapshot) => {
                 if(snapshot.exists()) {
                     allUsers = snapshot.val();
                     updateLeaderboard();
                     updateZoneColors();
 
-                    // --- Gérer les marqueurs des autres joueurs ---
                     Object.keys(allUsers).forEach(uid => {
-                        if (uid === myUser.uid) return; // Ne pas se dessiner soi-même en double
+                        if (uid === myUser.uid) return; 
 
                         const user = allUsers[uid];
-                        // Vérifier si le joueur a une position et s'il est "récent" (moins de 5 min)
                         if (user.lat && user.lng && (Date.now() - user.lastSeen < 300000)) {
                             
                             const dist = getDistance(playerPos.lat, playerPos.lng, user.lat, user.lng);
                             
-                            if (dist <= 10) { // Limite de 10 km
+                            if (dist <= 10) { 
                                 if (!otherPlayersMarkers[uid]) {
-                                    // Créer le marqueur s'il n'existe pas
                                     const otherIcon = L.divIcon({ 
                                         className: 'custom-div-icon', 
                                         html: `<div class='player-marker' style='border-color: ${user.color}; background-color: rgba(255,255,255,0.7)'></div>`, 
@@ -408,18 +376,15 @@ map.on('click', () => {
                                         .addTo(map)
                                         .bindTooltip(user.username, {permanent: false, direction: 'top'});
                                 } else {
-                                    // Mettre à jour la position
                                     otherPlayersMarkers[uid].setLatLng([user.lat, user.lng]);
                                 }
                             } else {
-                                // Trop loin : supprimer si le marqueur existe
                                 if (otherPlayersMarkers[uid]) {
                                     map.removeLayer(otherPlayersMarkers[uid]);
                                     delete otherPlayersMarkers[uid];
                                 }
                             }
                         } else {
-                            // Déconnecté ou pas de position : supprimer
                             if (otherPlayersMarkers[uid]) {
                                 map.removeLayer(otherPlayersMarkers[uid]);
                                 delete otherPlayersMarkers[uid];
@@ -429,16 +394,14 @@ map.on('click', () => {
                 }
             });
 
-            // Écoute de toutes les zones
             onValue(ref(db, 'zones'), (snapshot) => {
                 const data = snapshot.val() || {};
                 allZones = data;
                 renderZonesMap();
-                checkCurrentZoneContext(); // Met à jour l'UI si la zone où je suis a été modifiée
+                checkCurrentZoneContext(); 
             });
         }
 
-        // --- Logique GPS et Grille ---
         function startGPS() {
             if (!navigator.geolocation) return alert("GPS non supporté.");
             watchId = navigator.geolocation.watchPosition(
@@ -446,7 +409,7 @@ map.on('click', () => {
                     const lat = pos.coords.latitude;
                     const lng = pos.coords.longitude;
                     playerPos = { lat, lng };
-                    playerMarker.setLatLng([lat, lng]); // Met à jour ton propre marqueur
+                    playerMarker.setLatLng([lat, lng]); 
 
                     // Envoyer ma position à Firebase
                     if (myUser.uid) {
@@ -461,7 +424,7 @@ map.on('click', () => {
                     if (newZoneId !== currentZoneId) {
                         changeZone(newZoneId);
                     }
-                }, // <--- C'EST CETTE VIRGULE QUI MANQUAIT ET QUI CASSAIT TOUT
+                }, 
                 (err) => console.error(err),
                 { enableHighAccuracy: true, maximumAge: 0 }
             );
@@ -478,29 +441,25 @@ map.on('click', () => {
             const latIdx = parseInt(parts[0]);
             const lngIdx = parseInt(parts[1]);
             return [
-                [latIdx * GRID_STEP_LAT, lngIdx * GRID_STEP_LNG], // Sud-Ouest
-                [(latIdx + 1) * GRID_STEP_LAT, (lngIdx + 1) * GRID_STEP_LNG] // Nord-Est
+                [latIdx * GRID_STEP_LAT, lngIdx * GRID_STEP_LNG], 
+                [(latIdx + 1) * GRID_STEP_LAT, (lngIdx + 1) * GRID_STEP_LNG] 
             ];
         }
 
 function renderZonesMap() {
-    // 1. Nettoyage des anciens rectangles
     Object.values(zoneRectangles).forEach(rect => map.removeLayer(rect));
     zoneRectangles = {};
 
     if (!playerPos) return;
 
-    // --- ÉTAPE A : Afficher TOUTES mes zones (partout dans le monde) ---
     Object.keys(allZones).forEach(zId => {
         const zone = allZones[zId];
         
-        // Si la zone m'appartient, je l'affiche peu importe la distance
         if (zone.ownerId === myUser.uid) {
             createZoneRectangle(zId, zone);
         }
     });
 
-    // --- ÉTAPE B : Afficher la grille locale (alentours du joueur) ---
     const pLatIdx = Math.floor(playerPos.lat / GRID_STEP_LAT);
     const pLngIdx = Math.floor(playerPos.lng / GRID_STEP_LNG);
     const range = 20; 
@@ -509,7 +468,6 @@ function renderZonesMap() {
         for (let j = -range; j <= range; j++) {
             const zId = `${pLatIdx + i}_${pLngIdx + j}`;
             
-            // Si le rectangle existe déjà (parce que c'est une de mes zones), on ne le recrée pas
             if (zoneRectangles[zId]) continue;
 
             const zone = allZones[zId];
@@ -521,7 +479,6 @@ function renderZonesMap() {
 function createZoneRectangle(zId, zone) {
     const bounds = getBoundsFromZoneId(zId);
     
-    // Style par défaut (Zone vide)
     let style = {
         color: '#aaa',
         weight: 1,
@@ -529,14 +486,12 @@ function createZoneRectangle(zId, zone) {
         interactive: true
     };
 
-    // Style si la zone est occupée
     if (zone) {
         const owner = allUsers[zone.ownerId];
         style.color = owner ? owner.color : '#555';
         style.weight = zone.level ? zone.level * 2 : 2;
         style.fillOpacity = zone.forSale ? 0.6 : 0.3;
         
-        // Effet visuel spécial si c'est MA zone (contour doré ou plus épais)
         if (zone.ownerId === myUser.uid) {
             style.weight = (zone.level || 1) * 3;
             style.fillOpacity = 0.5;
@@ -548,7 +503,6 @@ function createZoneRectangle(zId, zone) {
     const rect = L.rectangle(bounds, style).addTo(map);
     zoneRectangles[zId] = rect;
 
-    // Gestion du clic
     rect.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
         selectZone(zId);
@@ -558,7 +512,6 @@ function createZoneRectangle(zId, zone) {
     
 
 
-        // --- Logique de Zone & Capture ---
         function changeZone(newZoneId) {
             currentZoneId = newZoneId;
             captureTimer = 0;
@@ -570,7 +523,6 @@ function createZoneRectangle(zId, zone) {
             checkCurrentZoneContext();
         }
 
-// --- Gestion du Shop ---
 const shopBtn = document.getElementById('shop-toggle-btn');
 const shopScreen = document.getElementById('shop-screen');
 const closeShop = document.getElementById('close-shop');
@@ -589,7 +541,6 @@ shopSort.onchange = () => renderShop();
 function renderShop() {
     shopList.innerHTML = "";
     
-    // 1. Filtrer les zones qui sont à vendre
     let forSale = [];
     for (let id in allZones) {
         if (allZones[id].forSale) {
@@ -602,7 +553,6 @@ function renderShop() {
         return;
     }
 
-    // 2. Trier les zones
     const criteria = shopSort.value;
     forSale.sort((a, b) => {
         if (criteria === "price_asc") return a.price - b.price;
@@ -611,13 +561,11 @@ function renderShop() {
         if (criteria === "level_desc") return (b.level || 1) - (a.level || 1);
     });
 
-    // 3. Afficher les zones
     forSale.forEach(zone => {
         const owner = allUsers[zone.ownerId] || { username: "Inconnu", color: "#ccc" };
         const item = document.createElement('div');
         item.style.cssText = "background: #1a1a1a; padding: 12px; border-radius: 10px; border-left: 5px solid " + owner.color + "; display: flex; justify-content: space-between; align-items: center; text-align: left;";
         
-            // Dans renderShop(), modifie le style du bouton ACHETER :
 item.innerHTML = `
     <div>
         <div style="font-weight: bold;">Zone ${zone.id}</div>
@@ -642,18 +590,17 @@ item.innerHTML = `
     });
 }
 
-// Rendre les fonctions accessibles aux boutons HTML dynamiques
 window.goToZone = (id) => {
     const bounds = getBoundsFromZoneId(id);
-    map.fitBounds(bounds); // Zoom sur la zone
-    selectZone(id); // Ouvre le panel d'info
-    shopScreen.classList.add('hidden'); // Ferme le shop
+    map.fitBounds(bounds); 
+    selectZone(id); 
+    shopScreen.classList.add('hidden'); 
 };
 
 window.buyInShop = (id) => {
     if (confirm(`Voulez-vous acheter la zone ${id} ?`)) {
         buyZone(id, allZones[id]);
-        setTimeout(renderShop, 500); // Rafraîchir après achat
+        setTimeout(renderShop, 500); 
     }
 };
     
@@ -661,13 +608,9 @@ window.buyInShop = (id) => {
 function checkCurrentZoneContext() {
     if (!currentZoneId) return;
 
-    // Si l'utilisateur ne regarde rien (selectedZoneId est nul) 
-    // OU si la zone regardée est celle où il se trouve, on met à jour.
     if (!selectedZoneId || selectedZoneId === currentZoneId) {
         selectZone(currentZoneId);
     } else {
-        // Si l'utilisateur regarde une zone lointaine, on rafraîchit juste 
-        // ses données sans changer la sélection.
         selectZone(selectedZoneId);
     }
 }
@@ -675,43 +618,58 @@ function checkCurrentZoneContext() {
 
 
         function captureTick() {
-            const zone = allZones[currentZoneId];
-            const isMine = zone && zone.ownerId === myUser.uid;
-            
-            // Si c'est ma zone, pas de capture en cours
-            if (isMine) {
-                document.getElementById('capture-bar-fill').style.width = '100%';
-                document.getElementById('capture-bar-fill').style.backgroundColor = '#2ecc71';
-                document.getElementById('capture-text').innerText = "Territoire sécurisé";
-                return;
-            }
+    const zone = allZones[currentZoneId];
+    const isMine = zone && zone.ownerId === myUser.uid;
+    
+    if (isMine) {
+        document.getElementById('capture-bar-fill').style.width = '100%';
+        document.getElementById('capture-bar-fill').style.backgroundColor = '#2ecc71';
+        document.getElementById('capture-text').innerText = "Territoire sécurisé";
+        return;
+    }
 
-            const targetTime = zone ? TIME_STEAL : TIME_FREE;
-            captureTimer++;
+    // --- CALCUL DU TEMPS DYNAMIQUE ---
+    let targetTime = TIME_FREE; // Par défaut 60s pour zone libre
 
-            let percent = (captureTimer / targetTime) * 100;
-            document.getElementById('capture-bar-fill').style.width = `${percent}%`;
-            document.getElementById('capture-bar-fill').style.backgroundColor = zone ? '#e74c3c' : '#3498db';
-            document.getElementById('capture-text').innerText = `Capture : ${Math.floor(targetTime - captureTimer)}s`;
+    if (zone) {
+        const lvl = zone.level || 1;
+        if (lvl === 1) targetTime = 300;       // 5 min
+        else if (lvl === 2) targetTime = 600;  // 10 min
+        else if (lvl === 3) targetTime = 1200; // 20 min
+        else if (lvl >= 4) targetTime = 1800;  // 30 min
+    }
+    // ---------------------------------
 
-            if (captureTimer >= targetTime) {
-                clearInterval(captureInterval);
-                captureZone(currentZoneId, zone);
-            }
-        }
+    captureTimer++;
+
+    let percent = (captureTimer / targetTime) * 100;
+    document.getElementById('capture-bar-fill').style.width = `${percent}%`;
+    document.getElementById('capture-bar-fill').style.backgroundColor = zone ? '#e74c3c' : '#3498db';
+    
+    // Formatage du texte pour afficher minutes:secondes
+    const minutes = Math.floor((targetTime - captureTimer) / 60);
+    const seconds = Math.floor((targetTime - captureTimer) % 60);
+    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    
+    document.getElementById('capture-text').innerText = `Capture : ${timeString}`;
+
+    if (captureTimer >= targetTime) {
+        clearInterval(captureInterval);
+        captureZone(currentZoneId, zone);
+    }
+}
+
 
         async function captureZone(zoneId, existingZone) {
             document.getElementById('capture-text').innerText = "CAPTURE RÉUSSIE !";
             
             const updates = {};
             
-            // Retirer la zone à l'ancien proprio s'il y en avait un
             if (existingZone && existingZone.ownerId) {
                 const oldOwnerRef = ref(db, `users/${existingZone.ownerId}/zonesCount`);
                 runTransaction(oldOwnerRef, (currentCount) => (currentCount || 0) - 1);
             }
 
-            // Gérer les bonus des 10 captures
             let newTotal = (myUser.totalCaptured || 0) + 1;
             let coinsGained = 0;
             if (newTotal % 10 === 0) {
@@ -719,12 +677,10 @@ function checkCurrentZoneContext() {
                 alert("Bonus de conquête ! +15 pièces !");
             }
 
-            // Mettre à jour l'utilisateur
             updates[`users/${myUser.uid}/totalCaptured`] = newTotal;
             updates[`users/${myUser.uid}/zonesCount`] = (myUser.zonesCount || 0) + 1;
             if (coinsGained > 0) updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + coinsGained;
 
-            // Mettre à jour la zone (on garde le niveau si elle existait)
             updates[`zones/${zoneId}`] = {
                 ownerId: myUser.uid,
                 level: existingZone ? existingZone.level : 1,
@@ -733,11 +689,11 @@ function checkCurrentZoneContext() {
             };
 
             await update(ref(db), updates);
-            captureTimer = 0; // Reset pour ne pas spammer
+            captureTimer = 0; 
         }
 
         function getDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371; // Rayon de la Terre en km
+            const R = 6371; 
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
@@ -747,12 +703,11 @@ function checkCurrentZoneContext() {
             return R * c;
         }
 
-        // --- Actions sur le marché et les zones ---
         function getUpgradeCost(currentLevel) {
             if (currentLevel === 1) return 50;
             if (currentLevel === 2) return 75;
             if (currentLevel === 3) return 100;
-            return null; // Max level 4 atteint
+            return null; 
         }
 
         async function upgradeZone(zoneId, currentLevel, cost) {
@@ -776,18 +731,15 @@ function checkCurrentZoneContext() {
             if (myUser.coins < zoneData.price) return;
 
             const updates = {};
-            // Débit acheteur
             updates[`users/${myUser.uid}/coins`] = myUser.coins - zoneData.price;
             updates[`users/${myUser.uid}/zonesCount`] = (myUser.zonesCount || 0) + 1;
             
-            // Crédit vendeur
             const seller = allUsers[zoneData.ownerId];
             if (seller) {
                 updates[`users/${zoneData.ownerId}/coins`] = (seller.coins || 0) + zoneData.price;
                 updates[`users/${zoneData.ownerId}/zonesCount`] = Math.max(0, (seller.zonesCount || 1) - 1);
             }
 
-            // Transfert zone
             updates[`zones/${zoneId}/ownerId`] = myUser.uid;
             updates[`zones/${zoneId}/forSale`] = false;
             updates[`zones/${zoneId}/price`] = 0;
@@ -796,7 +748,6 @@ function checkCurrentZoneContext() {
             alert("Zone achetée avec succès !");
         }
 
-        // --- Economie (Revenus) ---
         async function collectIncome() {
             let myZones = Object.values(allZones).filter(z => z.ownerId === myUser.uid);
             if (myZones.length === 0) return;
@@ -804,7 +755,6 @@ function checkCurrentZoneContext() {
             let income = 0;
             myZones.forEach(z => {
                 let lvl = z.level || 1;
-                // Base 5. Lvl 2: +3 (8). Lvl 3: +3 (11). Lvl 4: +3 (14)
                 income += 2 + ((lvl - 1) * 3); 
             });
 
@@ -815,36 +765,31 @@ function checkCurrentZoneContext() {
             await update(ref(db), updates);
         }
 
-        // --- UI Updates ---
         function updateHUD() {
             document.getElementById('coins-display').innerText = `💰 ${myUser.coins}`;
             document.getElementById('zone-count-display').innerText = `🚩 ${myUser.zonesCount || 0} territoires`;
             
-            // Calcul affichage revenu
             let myZones = Object.values(allZones).filter(z => z.ownerId === myUser.uid);
             let income = myZones.reduce((acc, z) => acc + 2 + (((z.level||1) - 1) * 3), 0);
             document.getElementById('income-display').innerText = income;
 
-            checkCurrentZoneContext(); // Met à jour les boutons si les pièces changent
+            checkCurrentZoneContext(); 
         }
     
     function selectZone(zoneId) {
-    selectedZoneId = zoneId; // On mémorise que l'utilisateur regarde CETTE zone
+    selectedZoneId = zoneId; 
     const zone = allZones[zoneId];
     const actionsDiv = document.getElementById('zone-actions');
     const statusDiv = document.getElementById('zone-status');
     const coordsDiv = document.getElementById('zone-coords');
     
-    // Mise à jour des infos textuelles
     coordsDiv.innerText = `ID: ${zoneId}`;
-    actionsDiv.innerHTML = ''; // On vide les boutons précédents
+    actionsDiv.innerHTML = ''; 
     actionsDiv.classList.add('hidden');
 
-    // Cas 1 : La zone n'appartient à personne
     if (!zone) {
         statusDiv.innerText = "Zone Libre";
         statusDiv.style.color = "white";
-        // Optionnel : un petit message pour dire qu'il faut s'y rendre
         let info = document.createElement('div');
         info.style.fontSize = "0.8rem";
         info.style.color = "#aaa";
@@ -853,13 +798,11 @@ function checkCurrentZoneContext() {
         actionsDiv.classList.remove('hidden');
     } 
     
-    // Cas 2 : C'est TA zone (Gestion et Vente)
     else if (zone.ownerId === myUser.uid) {
         statusDiv.innerText = `Ta zone (Niv ${zone.level || 1})`;
         statusDiv.style.color = myUser.color;
         actionsDiv.classList.remove('hidden');
         
-        // Bouton Améliorer
         let upgradeCost = getUpgradeCost(zone.level || 1);
         if (upgradeCost) {
             let btnUp = document.createElement('button');
@@ -867,13 +810,12 @@ function checkCurrentZoneContext() {
             btnUp.innerText = `Améliorer (${upgradeCost}💰)`;
             btnUp.disabled = myUser.coins < upgradeCost;
             btnUp.onclick = (e) => {
-                e.stopPropagation(); // Évite de re-cliquer sur la zone
+                e.stopPropagation(); 
                 upgradeZone(zoneId, zone.level || 1, upgradeCost);
             };
             actionsDiv.appendChild(btnUp);
         }
 
-        // Bouton Vendre / Retirer
         let btnSell = document.createElement('button');
         btnSell.className = 'btn-sell';
         if (zone.forSale) {
@@ -895,7 +837,6 @@ function checkCurrentZoneContext() {
         actionsDiv.appendChild(btnSell);
     } 
     
-    // Cas 3 : C'est la zone de quelqu'un d'autre
     else {
         const owner = allUsers[zone.ownerId];
         const ownerName = owner ? owner.username : 'Inconnu';
@@ -903,7 +844,6 @@ function checkCurrentZoneContext() {
         
         statusDiv.innerHTML = `Zone de <span style="color:${ownerColor}">${ownerName}</span> (Niv ${zone.level || 1})`;
         
-        // Si elle est en vente, on affiche le bouton d'achat
         if (zone.forSale) {
             actionsDiv.classList.remove('hidden');
             let btnBuy = document.createElement('button');
@@ -948,29 +888,25 @@ function updateLeaderboard() {
     document.getElementById('debug-btn').addEventListener('click', () => {
     console.log("🛠️ Mode Debug : Réinitialisation complète...");
 
-    // 1. Relancer le tracking GPS (redemande la permission si besoin)
     if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
     }
     startGPS();
 
-    // 2. Recentrer la carte sur le joueur
     if (playerPos && map) {
         map.setView([playerPos.lat, playerPos.lng], 17, {
             animate: true,
-            duration: 1 // Animation d'une seconde pour le confort visuel
+            duration: 1 
         });
     }
 
-    // 3. Forcer le rechargement visuel des zones
     Object.values(zoneRectangles).forEach(rect => map.removeLayer(rect));
     zoneRectangles = {};
     renderZonesMap();
 
-    // 4. Feedback visuel sur le bouton
     const btn = document.getElementById('debug-btn');
     const originalText = btn.innerText;
-    btn.innerText = "🎯"; // Icône de cible pour le recentrage
+    btn.innerText = "🎯"; 
     
     setTimeout(() => { 
         btn.innerText = "​👾"; 
@@ -990,7 +926,7 @@ function updateLeaderboard() {
 <style>
 #shop-toggle-btn {
     position: absolute;
-    top: 180px;         /* Placé juste en dessous du bouton Debug (110px + 45px + marge) */
+    top: 180px;
     right: 20px;
     z-index: 1500;
     
@@ -998,7 +934,7 @@ function updateLeaderboard() {
     height: 45px; 
     
     border-radius: 50%;
-    background: rgba(44, 62, 80, 0.9); /* Gris foncé bleuté identique au debug */
+    background: rgba(44, 62, 80, 0.9); 
     color: white;
     border: 2px solid rgba(255, 255, 255, 0.5);
     cursor: pointer;
