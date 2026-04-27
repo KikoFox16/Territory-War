@@ -315,7 +315,7 @@
             startGame();
         });
 
-// --- SYSTÈME D'AMIS ET ÉCHANGE ---
+
 const friendsBtn = document.getElementById('friends-toggle-btn');
 const friendsScreen = document.getElementById('friends-screen');
 const tradeScreen = document.getElementById('trade-screen');
@@ -323,7 +323,7 @@ const tradeScreen = document.getElementById('trade-screen');
 friendsBtn.onclick = () => friendsScreen.classList.remove('hidden');
 document.getElementById('close-friends').onclick = () => friendsScreen.classList.add('hidden');
 
-// Envoyer une demande par PSEUDO
+
 document.getElementById('send-friend-req').onclick = async () => {
     const targetUsername = document.getElementById('add-friend-uid').value.trim();
     console.log("Tentative d'envoi à :", targetUsername);
@@ -334,7 +334,6 @@ document.getElementById('send-friend-req').onclick = async () => {
         return;
     }
 
-    // On cherche l'UID dans la liste locale des utilisateurs
     const targetEntry = Object.entries(allUsers).find(([uid, user]) => 
         user.username && user.username.toLowerCase() === targetUsername.toLowerCase()
     );
@@ -362,9 +361,7 @@ document.getElementById('send-friend-req').onclick = async () => {
 
 
 
-// Écouter les demandes et les amis
 function listenToFriends() {
-    // Demandes entrantes
     onValue(ref(db, `requests/${myUser.uid}`), (snap) => {
         const reqs = snap.val();
         const container = document.getElementById('friends-requests');
@@ -384,7 +381,6 @@ function listenToFriends() {
         }
     });
 
-    // Liste d'amis
     onValue(ref(db, `friends/${myUser.uid}`), (snap) => {
         const friends = snap.val();
         const container = document.getElementById('friends-list');
@@ -401,12 +397,11 @@ function listenToFriends() {
     });
 }
 
-// Fonctions globales pour les boutons (Window)
 window.acceptFriend = async (fUid, fName) => {
     const updates = {};
     updates[`friends/${myUser.uid}/${fUid}`] = { name: fName };
     updates[`friends/${fUid}/${myUser.uid}`] = { name: myUser.username };
-    updates[`requests/${myUser.uid}/${fUid}`] = null; // Supprime la demande
+    updates[`requests/${myUser.uid}/${fUid}`] = null; 
     
     await update(ref(db), updates);
     alert("Ami ajouté !");
@@ -416,81 +411,157 @@ window.refuseFriend = async (fUid) => {
     await set(ref(db, `requests/${myUser.uid}/${fUid}`), null);
 };
 
-// --- SYSTÈME DE TRADE ---
+// --- VARIABLES DE SESSION ---
 let currentTradeId = null;
-let tradeTimer = null;
+let tradeListener = null;
 
+// --- 1. ENVOYER UNE DEMANDE D'ÉCHANGE ---
 window.initiateTrade = async (partnerUid, partnerName) => {
-    currentTradeId = myUser.uid < partnerUid ? `${myUser.uid}_${partnerUid}` : `${partnerUid}_${myUser.uid}`;
-    
-    // Remplir le sélecteur de zones
-    const zoneSelect = document.getElementById('trade-my-zone');
-    zoneSelect.innerHTML = '<option value="">-- Aucune zone --</option>';
-    Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid).forEach(id => {
-        zoneSelect.innerHTML += `<option value="${id}">Zone ${id}</option>`;
+    if (confirm(`Envoyer une proposition d'échange à ${partnerName} ?`)) {
+        await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
+            from: myUser.username,
+            fromUid: myUser.uid,
+            timestamp: Date.now()
+        });
+        alert("Demande d'échange envoyée !");
+    }
+};
+
+// --- 2. ÉCOUTER LES DEMANDES D'ÉCHANGE (À mettre dans listenToFriends) ---
+function listenToTradeRequests() {
+    onValue(ref(db, `tradeRequests/${myUser.uid}`), (snap) => {
+        const reqs = snap.val();
+        if (!reqs) return;
+        
+        Object.keys(reqs).forEach(async (fromUid) => {
+            const r = reqs[fromUid];
+            if (confirm(`${r.from} veut faire un échange avec toi ! Accepter ?`)) {
+                // Créer la session d'échange
+                const tradeId = myUser.uid < fromUid ? `${myUser.uid}_${fromUid}` : `${fromUid}_${myUser.uid}`;
+                await set(ref(db, `trades/${tradeId}`), {
+                    status: "active",
+                    [myUser.uid]: { ready: false, coins: 0, zoneId: "" },
+                    [fromUid]: { ready: false, coins: 0, zoneId: "" }
+                });
+                // Supprimer la requête
+                await set(ref(db, `tradeRequests/${myUser.uid}/${fromUid}`), null);
+                openTradeScreen(tradeId, r.from);
+            } else {
+                await set(ref(db, `tradeRequests/${myUser.uid}/${fromUid}`), null);
+            }
+        });
     });
 
+    // Écouter si une session est créée pour nous (cas où on est celui qui a envoyé)
+    onValue(ref(db, `trades`), (snap) => {
+        const allTrades = snap.val();
+        if (!allTrades) return;
+        Object.keys(allTrades).forEach(tId => {
+            if (tId.includes(myUser.uid) && !currentTradeId) {
+                const partnerUid = tId.replace(myUser.uid, "").replace("_", "");
+                const partnerName = allUsers[partnerUid]?.username || "Ami";
+                openTradeScreen(tId, partnerName);
+            }
+        });
+    });
+}
+
+// --- 3. L'INTERFACE D'ÉCHANGE AMÉLIORÉE ---
+function openTradeScreen(tradeId, partnerName) {
+    currentTradeId = tradeId;
     document.getElementById('trade-partner-name').innerText = partnerName;
-    friendsScreen.classList.add('hidden');
-    tradeScreen.classList.remove('hidden');
+    document.getElementById('trade-screen').classList.remove('hidden');
+    
+    // Remplir le sélecteur de zones avec style
+    const zoneSelect = document.getElementById('trade-my-zone');
+    zoneSelect.innerHTML = '<option value="">-- Aucune Zone --</option>';
+    Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid).forEach(id => {
+        const z = allZones[id];
+        zoneSelect.innerHTML += `<option value="${id}">🚩 Zone ${id} (Niv.${z.level || 1})</option>`;
+    });
 
-    // Écouter l'état du trade
-    onValue(ref(db, `trades/${currentTradeId}`), (snap) => {
-        const trade = snap.val();
-        if (!trade) return;
+    // Écouteur temps réel de l'échange
+    if (tradeListener) tradeListener(); // Nettoyer l'ancien
+    tradeListener = onValue(ref(db, `trades/${tradeId}`), (snap) => {
+        const data = snap.val();
+        if (!data) {
+            closeTrade(); // Si l'autre annule (session supprimée)
+            return;
+        }
 
-        const partnerData = trade[partnerUid] || {};
+        const partnerUid = tradeId.replace(myUser.uid, "").replace("_", "");
+        const me = data[myUser.uid];
+        const them = data[partnerUid];
+
+        // Update UI Partenaire
         document.getElementById('partner-offer').innerHTML = `
-            Coins: ${partnerData.coins || 0}<br>
-            Zone: ${partnerData.zoneId || 'Aucune'}<br>
-            Statut: ${partnerData.ready ? '✅ PRÊT' : '⏳ Choix...'}`;
+            <div style="color:#f1c40f">💰 ${them.coins || 0} pièces</div>
+            <div style="color:#3498db">🚩 ${them.zoneId ? 'Zone '+them.zoneId : 'Aucune'}</div>
+            <div style="margin-top:10px">${them.ready ? '✅ PRÊT' : '⏳ RÉFLÉCHIT...'}</div>
+        `;
 
-        // Si les deux sont prêts, compte à rebours
-        if (trade[myUser.uid]?.ready && trade[partnerUid]?.ready) {
-            startTradeCountdown();
+        if (me.ready && them.ready) {
+            startTradeCountdown(tradeId);
         } else {
             stopTradeCountdown();
         }
     });
-};
-
-document.getElementById('accept-trade').onclick = async () => {
-    const coins = parseInt(document.getElementById('trade-my-coins').value) || 0;
-    const zoneId = document.getElementById('trade-my-zone').value;
-
-    if (coins > myUser.coins) return alert("Pas assez de pièces !");
-
-    await update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), {
-        coins, zoneId, ready: true
-    });
-};
-
-function startTradeCountdown() {
-    let count = 5;
-    const status = document.getElementById('trade-status');
-    if (tradeTimer) return;
-
-    tradeTimer = setInterval(async () => {
-        status.innerText = `CONFIRMATION DANS ${count}s...`;
-        if (count <= 0) {
-            clearInterval(tradeTimer);
-            await finalizeTrade();
-        }
-        count--;
-    }, 1000);
 }
 
+// --- 4. ANNULATION ET SUPPRESSION D'AMI ---
+document.getElementById('cancel-trade').onclick = async () => {
+    if (currentTradeId) {
+        await set(ref(db, `trades/${currentTradeId}`), null);
+        closeTrade();
+    }
+};
+
+function closeTrade() {
+    currentTradeId = null;
+    document.getElementById('trade-screen').classList.add('hidden');
+    document.getElementById('trade-status').innerText = "";
+    if (tradeListener) tradeListener();
+}
+
+window.removeFriend = async (fUid, fName) => {
+    if (confirm(`Supprimer ${fName} de tes amis ?`)) {
+        const updates = {};
+        updates[`friends/${myUser.uid}/${fUid}`] = null;
+        updates[`friends/${fUid}/${myUser.uid}`] = null;
+        await update(ref(db), updates);
+    }
+};
+
+// --- 5. FINALISATION (Mouvement des ressources) ---
 async function finalizeTrade() {
     const snap = await get(ref(db, `trades/${currentTradeId}`));
     const trade = snap.val();
-    const partnerUid = Object.keys(trade).find(id => id !== myUser.uid);
+    if (!trade) return;
+
+    const partnerUid = currentTradeId.replace(myUser.uid, "").replace("_", "");
+    const me = trade[myUser.uid];
+    const them = trade[partnerUid];
+
+    const updates = {};
     
-    // Logique de transfert ici (similaire à buyZone mais sans shop)
-    // ... Mise à jour des coins et zones pour les deux joueurs ...
-    
-    await set(ref(db, `trades/${currentTradeId}`), null); // Nettoyage
-    tradeScreen.classList.add('hidden');
-    alert("Échange réussi !");
+    // Transfert des pièces
+    updates[`users/${myUser.uid}/coins`] = (myUser.coins - me.coins) + them.coins;
+    updates[`users/${partnerUid}/coins`] = (allUsers[partnerUid].coins - them.coins) + me.coins;
+
+    // Transfert des zones
+    if (me.zoneId) {
+        updates[`zones/${me.zoneId}/ownerId`] = partnerUid;
+        updates[`zones/${me.zoneId}/forSale`] = false;
+    }
+    if (them.zoneId) {
+        updates[`zones/${them.zoneId}/ownerId`] = myUser.uid;
+        updates[`zones/${them.zoneId}/forSale`] = false;
+    }
+
+    await update(ref(db), updates);
+    await set(ref(db, `trades/${currentTradeId}`), null);
+    alert("Échange terminé !");
+    closeTrade();
 }
     
     
@@ -501,8 +572,6 @@ function startGame() {
     initMap();
     listenToDatabase();
     startGPS();
-    
-    // AJOUTE CETTE LIGNE ICI :
     listenToFriends(); 
 
     setTimeout(() => {
@@ -582,13 +651,11 @@ map.on('click', () => {
         updateLeaderboard();
         updateZoneColors();
 
-        // On récupère la liste des IDs de toutes tes zones + leurs voisines
         const myControlledArea = new Set();
         Object.keys(allZones).forEach(zId => {
             if (allZones[zId].ownerId === myUser.uid) {
-                myControlledArea.add(zId); // Ta zone
+                myControlledArea.add(zId); 
                 
-                // On ajoute les 8 zones voisines (le radar s'étend d'une case autour)
                 const parts = zId.split('_');
                 const lat = parseInt(parts[0]);
                 const lng = parseInt(parts[1]);
@@ -610,9 +677,6 @@ map.on('click', () => {
                 const userZoneId = getZoneIdFromLatLng(user.lat, user.lng);
                 const dist = getDistance(playerPos.lat, playerPos.lng, user.lat, user.lng);
                 
-                // CONDITION DE VISIBILITÉ : 
-                // Soit il est à moins de 10km (ton radar personnel)
-                // Soit il est dans/à côté d'un de tes territoires (ton réseau de surveillance)
                 const isVisible = (dist <= 10) || myControlledArea.has(userZoneId);
 
                 if (isVisible) { 
@@ -669,9 +733,7 @@ map.on('click', () => {
             });
         }
 
-        // --- MODIFICATION ICI ---
         if (!isExploring) {
-            // On ne change de zone et on ne suit le joueur QUE si on n'explore pas
             const newZoneId = getZoneIdFromLatLng(lat, lng);
             if (newZoneId !== currentZoneId) {
                 changeZone(newZoneId);
@@ -701,7 +763,6 @@ map.on('click', () => {
         }
 
 function renderZonesMap() {
-    // SI on explore, on ne nettoie pas la carte pour éviter que les zones disparaissent
     if (isExploring) return; 
 
     Object.values(zoneRectangles).forEach(rect => map.removeLayer(rect));
@@ -709,7 +770,6 @@ function renderZonesMap() {
 
     if (!playerPos) return;
 
-    // Afficher mes zones
     Object.keys(allZones).forEach(zId => {
         const zone = allZones[zId];
         if (zone.ownerId === myUser.uid) {
@@ -749,19 +809,17 @@ function createZoneRectangle(zId, zone) {
         style.weight = zone.level ? zone.level * 2 : 2;
         style.fillOpacity = zone.forSale ? 0.6 : 0.3;
         
-        // Style spécifique si c'est ma zone
         if (zone.ownerId === myUser.uid) {
             style.weight = (zone.level || 1) * 3;
             style.fillOpacity = 0.5;
         }
 
-        // --- STYLE DE PROTECTION (BOUCLIER) ---
         if (protection.active) {
-            style.color = "#f1c40f"; // Couleur Or
-            style.weight = (zone.level || 1) * 5; // Bordure beaucoup plus épaisse
-            style.dashArray = null; // Désactive les pointillés même si en vente
+            style.color = "#f1c40f"; 
+            style.weight = (zone.level || 1) * 5; 
+            style.dashArray = null; 
         } else if (zone.forSale) {
-            style.dashArray = '5, 5'; // Pointillés pour la vente si non protégé
+            style.dashArray = '5, 5'; 
         }
     }
 
@@ -858,38 +916,32 @@ window.goToZone = (id) => {
     const targetLat = parseInt(parts[0]) * GRID_STEP_LAT;
     const targetLng = parseInt(parts[1]) * GRID_STEP_LNG;
 
-    // Activer le mode exploration
     isExploring = true;
     if (explorationTimeout) clearTimeout(explorationTimeout);
 
-    // Déplacer la carte
     map.setView([targetLat, targetLng], 17);
     
-    // Forcer le rendu des zones autour de la cible (10x10)
     renderExplorationZones(targetLat, targetLng);
 
     selectZone(id);
     shopScreen.classList.add('hidden');
 
-    // Message d'info
     const statusDiv = document.getElementById('zone-status');
     statusDiv.innerHTML = "🔭 MODE EXPLORATION (30s)";
 
-    // Retour automatique après 30 secondes
     explorationTimeout = setTimeout(() => {
         isExploring = false;
         map.setView([playerPos.lat, playerPos.lng], 17);
-        renderZonesMap(); // Remet la grille normale
+        renderZonesMap(); 
         checkCurrentZoneContext();
     }, 30000);
 };
     
     
 function renderExplorationZones(lat, lng) {
-    // On ne vide pas forcément tout, mais on s'assure de voir la zone cible
     const tLatIdx = Math.floor(lat / GRID_STEP_LAT);
     const tLngIdx = Math.floor(lng / GRID_STEP_LNG);
-    const range = 5; // 5 de chaque côté = 10x10 environ
+    const range = 5; 
 
     for (let i = -range; i <= range; i++) {
         for (let j = -range; j <= range; j++) {
@@ -918,13 +970,12 @@ function checkCurrentZoneContext() {
         function captureTick() {
     const zone = allZones[currentZoneId];
             
-    // VERIFICATION PROTECTION
     const protection = getProtectionStatus(zone);
     if (protection.active) {
         document.getElementById('capture-bar-fill').style.width = '0%';
         document.getElementById('capture-bar-fill').style.backgroundColor = '#95a5a6';
         document.getElementById('capture-text').innerText = "🛡️ ZONE PROTÉGÉE";
-        return; // On arrête là, le timer ne monte pas
+        return; 
     }        
             
     const isMine = zone && zone.ownerId === myUser.uid;
@@ -936,8 +987,7 @@ function checkCurrentZoneContext() {
         return;
     }
 
-    // --- CALCUL DU TEMPS DYNAMIQUE ---
-    let targetTime = TIME_FREE; // Par défaut 60s pour zone libre
+    let targetTime = TIME_FREE; 
 
     if (zone) {
         const lvl = zone.level || 1;
@@ -946,7 +996,6 @@ function checkCurrentZoneContext() {
         else if (lvl === 3) targetTime = 1200; // 20 min
         else if (lvl >= 4) targetTime = 1800;  // 30 min
     }
-    // ---------------------------------
 
     captureTimer++;
 
@@ -954,7 +1003,6 @@ function checkCurrentZoneContext() {
     document.getElementById('capture-bar-fill').style.width = `${percent}%`;
     document.getElementById('capture-bar-fill').style.backgroundColor = zone ? '#e74c3c' : '#3498db';
     
-    // Formatage du texte pour afficher minutes:secondes
     const minutes = Math.floor((targetTime - captureTimer) / 60);
     const seconds = Math.floor((targetTime - captureTimer) % 60);
     const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -1111,7 +1159,6 @@ function selectZone(zoneId) {
         statusDiv.style.color = myUser.color;
         actionsDiv.classList.remove('hidden');
         
-        // --- BOUTON AMÉLIORATION ---
         let upgradeCost = getUpgradeCost(zone.level || 1);
         if (upgradeCost) {
             let btnUp = document.createElement('button');
@@ -1125,7 +1172,6 @@ function selectZone(zoneId) {
             actionsDiv.appendChild(btnUp);
         }
 
-        // --- BOUTON PROTECTION (BOUCLIER) ---
         const protection = getProtectionStatus(zone);
         let btnProtect = document.createElement('button');
         btnProtect.style.background = "#2c3e50";
@@ -1163,7 +1209,6 @@ function selectZone(zoneId) {
             actionsDiv.appendChild(expiryInfo);
         }
 
-        // --- BOUTON VENTE ---
         let btnSell = document.createElement('button');
         btnSell.className = 'btn-sell';
         if (zone.forSale) {
@@ -1238,8 +1283,6 @@ function updateLeaderboard() {
     });
 }
 
-// --- SYSTÈME DE PROTECTION ---
-
 const PROTECTION_PLANS = [
     { id: '1d', label: '1 Jour', duration: 86400000, cost: 50 },
     { id: '1w', label: '1 Semaine', duration: 604800000, cost: 300 },
@@ -1253,7 +1296,6 @@ async function protectZone(zoneId, plan) {
     }
 
     const now = Date.now();
-    // On ajoute au temps actuel (ou au temps d'expiration restant si déjà protégé)
     const currentExpiry = (allZones[zoneId] && allZones[zoneId].protectionExpiry) || now;
     const baseTime = Math.max(now, currentExpiry);
     const newExpiry = baseTime + plan.duration;
@@ -1266,7 +1308,6 @@ async function protectZone(zoneId, plan) {
     alert(`Bouclier activé jusqu'au ${new Date(newExpiry).toLocaleDateString()} !`);
 }
 
-// Fonction utilitaire pour vérifier si une zone est protégée
 function getProtectionStatus(zone) {
     if (!zone || !zone.protectionExpiry) return { active: false };
     const remaining = zone.protectionExpiry - Date.now();
@@ -1374,45 +1415,58 @@ function getProtectionStatus(zone) {
 <button id="friends-toggle-btn" title="Amis">👥</button>
 
 <div id="friends-screen" class="screen hidden" style="z-index: 3100;">
-    <div class="panel" style="width: 90%; max-width: 400px; max-height: 80vh; overflow-y: auto;">
+    <div class="panel" style="width: 95%; max-width: 400px; height: 80vh;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h2 style="margin:0;">Amis & Requêtes</h2>
-            <button id="close-friends" style="width: auto; padding: 5px 15px; margin: 0; background: #e74c3c;">X</button>
+            <h2 style="margin:0; font-size: 1.2rem;">Réseau</h2>
+            <button id="close-friends" style="width: auto; padding: 10px; margin: 0; background: #e74c3c;">✕</button>
         </div>
-        <div id="friends-requests" style="border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 10px;">
+        
+        <div id="friends-requests" style="max-height: 100px; overflow-y: auto;"></div>
+        
+        <div id="friends-list" style="flex-grow: 1; overflow-y: auto; margin-top: 10px; border-top: 1px solid #333;">
             </div>
-        <div id="friends-list">
-            </div>
-        <div style="margin-top:15px; border-top: 1px solid #444; padding-top: 10px;">
-            <input type="text" id="add-friend-uid" placeholder="Pseudo de l'ami" style="width:80%; font-size:0.9rem;">
-            <button id="send-friend-req" style="width:100%; font-size:0.9rem;">Envoyer Demande</button>
+
+        <div style="background: #222; padding: 10px; border-radius: 10px; margin-top: 10px;">
+            <input type="text" id="add-friend-uid" placeholder="Entrer un pseudo..." style="width:100%; box-sizing: border-box; margin-bottom: 5px;">
+            <button id="send-friend-req" style="width:100%; margin:0;">AJOUTER</button>
         </div>
     </div>
 </div>
 
 <div id="trade-screen" class="screen hidden" style="z-index: 3200;">
-    <div class="panel" style="width: 90%; max-width: 450px;">
-        <h3>🤝 Échange avec <span id="trade-partner-name">...</span></h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left;">
-            <div>
-                <p style="font-size:0.8rem; color:#aaa;">Toi</p>
-                <input type="number" id="trade-my-coins" placeholder="Pièces" style="width:90%; padding:5px;">
-                <select id="trade-my-zone" style="width:90%; margin-top:5px; background:#222; color:white;"></select>
+    <div class="panel" style="width: 95%; max-width: 450px; border: 2px solid #f1c40f;">
+        <h3 style="margin-top:0;">🤝 Échange : <span id="trade-partner-name" style="color:#f1c40f;">...</span></h3>
+        
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div style="background: #1a1a1a; padding: 10px; border-radius: 10px; border: 1px solid #333;">
+                <p style="margin:0 0 10px 0; font-size:0.8rem; color:#aaa; text-transform: uppercase;">Ton Offre</p>
+                <div style="display:flex; gap:5px; margin-bottom:10px;">
+                    <span style="font-size:1.2rem;">💰</span>
+                    <input type="number" id="trade-my-coins" placeholder="Nombre de pièces" style="flex-grow:1; background:#000; color:#f1c40f; border:1px solid #444; padding:8px;">
+                </div>
+                <div style="display:flex; gap:5px;">
+                    <span style="font-size:1.2rem;">🚩</span>
+                    <select id="trade-my-zone" style="flex-grow:1; background:#000; color:#3498db; border:1px solid #444; padding:8px;"></select>
+                </div>
             </div>
-            <div>
-                <p style="font-size:0.8rem; color:#aaa;">Partenaire</p>
-                <div id="partner-offer" style="background:#222; padding:10px; border-radius:5px; min-height:60px; font-size:0.8rem;">
-                    En attente...
+
+            <div style="background: #1a1a1a; padding: 10px; border-radius: 10px; border: 1px solid #333;">
+                <p style="margin:0 0 10px 0; font-size:0.8rem; color:#aaa; text-transform: uppercase;">Son Offre</p>
+                <div id="partner-offer" style="text-align: center; font-weight: bold; min-height: 50px;">
+                    Chargement...
                 </div>
             </div>
         </div>
-        <div id="trade-status" style="margin: 15px 0; font-weight: bold; color: #f1c40f;"></div>
+
+        <div id="trade-status" style="margin: 20px 0; font-weight: bold; color: #2ecc71; min-height: 20px;"></div>
+        
         <div style="display:flex; gap:10px;">
-            <button id="cancel-trade" style="background:#e74c3c;">Annuler</button>
-            <button id="accept-trade" style="background:#2ecc71;">Prêt</button>
+            <button id="cancel-trade" style="background:#444; flex:1;">ANNULER</button>
+            <button id="accept-trade" style="background:#2ecc71; flex:2;">VALIDER L'OFFRE</button>
         </div>
     </div>
 </div>
+
     
     
 </body>
