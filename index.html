@@ -323,18 +323,34 @@ const tradeScreen = document.getElementById('trade-screen');
 friendsBtn.onclick = () => friendsScreen.classList.remove('hidden');
 document.getElementById('close-friends').onclick = () => friendsScreen.classList.add('hidden');
 
-// Envoyer une demande
+// Envoyer une demande par PSEUDO
 document.getElementById('send-friend-req').onclick = async () => {
-    const targetUid = document.getElementById('add-friend-uid').value.trim();
-    if (!targetUid || targetUid === myUser.uid) return;
-    
+    const targetUsername = document.getElementById('add-friend-uid').value.trim();
+    if (!targetUsername || targetUsername === myUser.username) return;
+
+    // 1. Chercher l'UID correspondant au pseudo dans allUsers
+    const targetEntry = Object.entries(allUsers).find(([uid, user]) => 
+        user.username.toLowerCase() === targetUsername.toLowerCase()
+    );
+
+    if (!targetEntry) {
+        alert("Utilisateur introuvable !");
+        return;
+    }
+
+    const targetUid = targetEntry[0]; // C'est l'UID de la personne
+
+    // 2. Envoyer la requête avec l'UID trouvé
     await set(ref(db, `requests/${targetUid}/${myUser.uid}`), {
         from: myUser.username,
         fromUid: myUser.uid,
         timestamp: Date.now()
     });
+
+    alert("Demande envoyée à " + targetUsername);
     document.getElementById('add-friend-uid').value = "";
 };
+
 
 // Écouter les demandes et les amis
 function listenToFriends() {
@@ -1384,4 +1400,4 @@ function getProtectionStatus(zone) {
     
     
 </body>
-</html>
+    </html>
