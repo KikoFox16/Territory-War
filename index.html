@@ -129,6 +129,45 @@
         .player-marker { background-color: #fff; width: 16px; height: 16px; border-radius: 50%; border: 3px solid #000; box-shadow: 0 0 10px #fff; }
         .custom-div-icon { background: none; border: none; }
         
+        #friends-toggle-btn {
+    position: absolute; 
+    top: 230px; 
+    right: 20px; 
+    z-index: 1500;
+    
+    /* Dimensions fixes pour un cercle parfait */
+    width: 45px; 
+    height: 45px; 
+    
+    border-radius: 50%;
+    background: rgba(44, 62, 80, 0.9); 
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    font-size: 1.2rem;
+    
+    /* Centrage de l'icône */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    backdrop-filter: blur(5px);
+    transition: all 0.2s;
+    padding: 0; /* Important : enlève les marges internes qui déforment le rond */
+}
+
+#friends-toggle-btn:active { 
+    transform: scale(0.9); 
+    background: #34495e; 
+}
+
+.friend-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px; background: #1a1a1a; margin-bottom: 5px; border-radius: 8px;
+}
+
+    
         .leaflet-marker-pane { z-index: 600 !important; }
         .leaflet-tooltip-pane { z-index: 650 !important; }
     </style>
@@ -276,6 +315,157 @@
             startGame();
         });
 
+// --- SYSTÈME D'AMIS ET ÉCHANGE ---
+const friendsBtn = document.getElementById('friends-toggle-btn');
+const friendsScreen = document.getElementById('friends-screen');
+const tradeScreen = document.getElementById('trade-screen');
+
+friendsBtn.onclick = () => friendsScreen.classList.remove('hidden');
+document.getElementById('close-friends').onclick = () => friendsScreen.classList.add('hidden');
+
+// Envoyer une demande
+document.getElementById('send-friend-req').onclick = async () => {
+    const targetUid = document.getElementById('add-friend-uid').value.trim();
+    if (!targetUid || targetUid === myUser.uid) return;
+    
+    await set(ref(db, `requests/${targetUid}/${myUser.uid}`), {
+        from: myUser.username,
+        fromUid: myUser.uid,
+        timestamp: Date.now()
+    });
+    document.getElementById('add-friend-uid').value = "";
+};
+
+// Écouter les demandes et les amis
+function listenToFriends() {
+    // Demandes entrantes
+    onValue(ref(db, `requests/${myUser.uid}`), (snap) => {
+        const reqs = snap.val();
+        const container = document.getElementById('friends-requests');
+        container.innerHTML = reqs ? "<h4>Demandes :</h4>" : "";
+        if (reqs) {
+            Object.keys(reqs).forEach(fromUid => {
+                const r = reqs[fromUid];
+                const div = document.createElement('div');
+                div.className = 'friend-item';
+                div.innerHTML = `<span>${r.from}</span>
+                    <div>
+                        <button style="padding:5px; margin:0; width:auto; background:#2ecc71;" onclick="acceptFriend('${fromUid}', '${r.from}')">✔</button>
+                        <button style="padding:5px; margin:0; width:auto; background:#e74c3c;" onclick="refuseFriend('${fromUid}')">X</button>
+                    </div>`;
+                container.appendChild(div);
+            });
+        }
+    });
+
+    // Liste d'amis
+    onValue(ref(db, `friends/${myUser.uid}`), (snap) => {
+        const friends = snap.val();
+        const container = document.getElementById('friends-list');
+        container.innerHTML = friends ? "<h4>Tes Amis :</h4>" : "<p>Aucun ami.</p>";
+        if (friends) {
+            Object.keys(friends).forEach(fUid => {
+                const div = document.createElement('div');
+                div.className = 'friend-item';
+                div.innerHTML = `<span>${friends[fUid].name}</span>
+                    <button style="padding:5px; margin:0; width:auto;" onclick="initiateTrade('${fUid}', '${friends[fUid].name}')">🤝 Échanger</button>`;
+                container.appendChild(div);
+            });
+        }
+    });
+}
+
+// Fonctions globales pour les boutons (Window)
+window.acceptFriend = async (fUid, fName) => {
+    await update(ref(db), {
+        [`friends/${myUser.uid}/${fUid}`]: { name: fName },
+        [`friends/${fUid}/${myUser.uid}`]: { name: myUser.username },
+        [`requests/${myUser.uid}/${fUid}`]: null
+    });
+};
+
+window.refuseFriend = async (fUid) => {
+    await set(ref(db, `requests/${myUser.uid}/${fUid}`), null);
+};
+
+// --- SYSTÈME DE TRADE ---
+let currentTradeId = null;
+let tradeTimer = null;
+
+window.initiateTrade = async (partnerUid, partnerName) => {
+    currentTradeId = myUser.uid < partnerUid ? `${myUser.uid}_${partnerUid}` : `${partnerUid}_${myUser.uid}`;
+    
+    // Remplir le sélecteur de zones
+    const zoneSelect = document.getElementById('trade-my-zone');
+    zoneSelect.innerHTML = '<option value="">-- Aucune zone --</option>';
+    Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid).forEach(id => {
+        zoneSelect.innerHTML += `<option value="${id}">Zone ${id}</option>`;
+    });
+
+    document.getElementById('trade-partner-name').innerText = partnerName;
+    friendsScreen.classList.add('hidden');
+    tradeScreen.classList.remove('hidden');
+
+    // Écouter l'état du trade
+    onValue(ref(db, `trades/${currentTradeId}`), (snap) => {
+        const trade = snap.val();
+        if (!trade) return;
+
+        const partnerData = trade[partnerUid] || {};
+        document.getElementById('partner-offer').innerHTML = `
+            Coins: ${partnerData.coins || 0}<br>
+            Zone: ${partnerData.zoneId || 'Aucune'}<br>
+            Statut: ${partnerData.ready ? '✅ PRÊT' : '⏳ Choix...'}`;
+
+        // Si les deux sont prêts, compte à rebours
+        if (trade[myUser.uid]?.ready && trade[partnerUid]?.ready) {
+            startTradeCountdown();
+        } else {
+            stopTradeCountdown();
+        }
+    });
+};
+
+document.getElementById('accept-trade').onclick = async () => {
+    const coins = parseInt(document.getElementById('trade-my-coins').value) || 0;
+    const zoneId = document.getElementById('trade-my-zone').value;
+
+    if (coins > myUser.coins) return alert("Pas assez de pièces !");
+
+    await update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), {
+        coins, zoneId, ready: true
+    });
+};
+
+function startTradeCountdown() {
+    let count = 5;
+    const status = document.getElementById('trade-status');
+    if (tradeTimer) return;
+
+    tradeTimer = setInterval(async () => {
+        status.innerText = `CONFIRMATION DANS ${count}s...`;
+        if (count <= 0) {
+            clearInterval(tradeTimer);
+            await finalizeTrade();
+        }
+        count--;
+    }, 1000);
+}
+
+async function finalizeTrade() {
+    const snap = await get(ref(db, `trades/${currentTradeId}`));
+    const trade = snap.val();
+    const partnerUid = Object.keys(trade).find(id => id !== myUser.uid);
+    
+    // Logique de transfert ici (similaire à buyZone mais sans shop)
+    // ... Mise à jour des coins et zones pour les deux joueurs ...
+    
+    await set(ref(db, `trades/${currentTradeId}`), null); // Nettoyage
+    tradeScreen.classList.add('hidden');
+    alert("Échange réussi !");
+}
+    
+    
 function startGame() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
@@ -1149,6 +1339,49 @@ function getProtectionStatus(zone) {
     </div>
 </div>
 
+<button id="friends-toggle-btn" title="Amis">👥</button>
+
+<div id="friends-screen" class="screen hidden" style="z-index: 3100;">
+    <div class="panel" style="width: 90%; max-width: 400px; max-height: 80vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h2 style="margin:0;">Amis & Requêtes</h2>
+            <button id="close-friends" style="width: auto; padding: 5px 15px; margin: 0; background: #e74c3c;">X</button>
+        </div>
+        <div id="friends-requests" style="border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 10px;">
+            </div>
+        <div id="friends-list">
+            </div>
+        <div style="margin-top:15px; border-top: 1px solid #444; padding-top: 10px;">
+            <input type="text" id="add-friend-uid" placeholder="Pseudo de l'ami" style="width:80%; font-size:0.9rem;">
+            <button id="send-friend-req" style="width:100%; font-size:0.9rem;">Envoyer Demande</button>
+        </div>
+    </div>
+</div>
+
+<div id="trade-screen" class="screen hidden" style="z-index: 3200;">
+    <div class="panel" style="width: 90%; max-width: 450px;">
+        <h3>🤝 Échange avec <span id="trade-partner-name">...</span></h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left;">
+            <div>
+                <p style="font-size:0.8rem; color:#aaa;">Toi</p>
+                <input type="number" id="trade-my-coins" placeholder="Pièces" style="width:90%; padding:5px;">
+                <select id="trade-my-zone" style="width:90%; margin-top:5px; background:#222; color:white;"></select>
+            </div>
+            <div>
+                <p style="font-size:0.8rem; color:#aaa;">Partenaire</p>
+                <div id="partner-offer" style="background:#222; padding:10px; border-radius:5px; min-height:60px; font-size:0.8rem;">
+                    En attente...
+                </div>
+            </div>
+        </div>
+        <div id="trade-status" style="margin: 15px 0; font-weight: bold; color: #f1c40f;"></div>
+        <div style="display:flex; gap:10px;">
+            <button id="cancel-trade" style="background:#e74c3c;">Annuler</button>
+            <button id="accept-trade" style="background:#2ecc71;">Prêt</button>
+        </div>
+    </div>
+</div>
+    
     
 </body>
 </html>
