@@ -326,30 +326,40 @@ document.getElementById('close-friends').onclick = () => friendsScreen.classList
 // Envoyer une demande par PSEUDO
 document.getElementById('send-friend-req').onclick = async () => {
     const targetUsername = document.getElementById('add-friend-uid').value.trim();
-    if (!targetUsername || targetUsername === myUser.username) return;
+    console.log("Tentative d'envoi à :", targetUsername);
 
-    // 1. Chercher l'UID correspondant au pseudo dans allUsers
-    const targetEntry = Object.entries(allUsers).find(([uid, user]) => 
-        user.username.toLowerCase() === targetUsername.toLowerCase()
-    );
-
-    if (!targetEntry) {
-        alert("Utilisateur introuvable !");
+    if (!targetUsername) return;
+    if (targetUsername === myUser.username) {
+        alert("Tu ne peux pas t'ajouter toi-même !");
         return;
     }
 
-    const targetUid = targetEntry[0]; // C'est l'UID de la personne
+    // On cherche l'UID dans la liste locale des utilisateurs
+    const targetEntry = Object.entries(allUsers).find(([uid, user]) => 
+        user.username && user.username.toLowerCase() === targetUsername.toLowerCase()
+    );
 
-    // 2. Envoyer la requête avec l'UID trouvé
-    await set(ref(db, `requests/${targetUid}/${myUser.uid}`), {
-        from: myUser.username,
-        fromUid: myUser.uid,
-        timestamp: Date.now()
-    });
+    if (!targetEntry) {
+        alert("Utilisateur '" + targetUsername + "' introuvable. Vérifie l'orthographe !");
+        return;
+    }
 
-    alert("Demande envoyée à " + targetUsername);
-    document.getElementById('add-friend-uid').value = "";
+    const targetUid = targetEntry[0];
+
+    try {
+        await set(ref(db, `requests/${targetUid}/${myUser.uid}`), {
+            from: myUser.username,
+            fromUid: myUser.uid,
+            timestamp: Date.now()
+        });
+        alert("Demande envoyée à " + targetUsername + " !");
+        document.getElementById('add-friend-uid').value = "";
+    } catch (error) {
+        console.error("Erreur Firebase :", error);
+        alert("Erreur lors de l'envoi.");
+    }
 };
+
 
 
 // Écouter les demandes et les amis
@@ -393,11 +403,13 @@ function listenToFriends() {
 
 // Fonctions globales pour les boutons (Window)
 window.acceptFriend = async (fUid, fName) => {
-    await update(ref(db), {
-        [`friends/${myUser.uid}/${fUid}`]: { name: fName },
-        [`friends/${fUid}/${myUser.uid}`]: { name: myUser.username },
-        [`requests/${myUser.uid}/${fUid}`]: null
-    });
+    const updates = {};
+    updates[`friends/${myUser.uid}/${fUid}`] = { name: fName };
+    updates[`friends/${fUid}/${myUser.uid}`] = { name: myUser.username };
+    updates[`requests/${myUser.uid}/${fUid}`] = null; // Supprime la demande
+    
+    await update(ref(db), updates);
+    alert("Ami ajouté !");
 };
 
 window.refuseFriend = async (fUid) => {
@@ -489,6 +501,9 @@ function startGame() {
     initMap();
     listenToDatabase();
     startGPS();
+    
+    // AJOUTE CETTE LIGNE ICI :
+    listenToFriends(); 
 
     setTimeout(() => {
         offlineIncomeCheck();
@@ -497,6 +512,7 @@ function startGame() {
     incomeInterval = setInterval(collectIncome, INCOME_INTERVAL_MS);
     updateHUD();
 }
+
 
 async function offlineIncomeCheck() {
     if (!myUser.uid || !myUser.lastIncomeTime) return;
@@ -1400,4 +1416,4 @@ function getProtectionStatus(zone) {
     
     
 </body>
-    </html>
+</html>
