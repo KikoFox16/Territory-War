@@ -33,18 +33,18 @@
 }
 
 .toast {
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(20, 20, 20, 0.95);
     color: white;
-    padding: 12px 25px;
-    border-radius: 50px;
-    border-left: 4px solid #3498db;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-    backdrop-filter: blur(10px);
-    animation: slideUp 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
-    font-weight: bold;
-    min-width: 200px;
-    text-align: center;
+    padding: 14px 24px;
+    border-radius: 12px;
+    border-bottom: 3px solid #3498db; /* Barre de couleur en bas */
+    box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+    font-weight: 500;
+    font-size: 0.9rem;
+    animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
+
 
 @keyframes slideUp {
     from { transform: translateY(100px); opacity: 0; }
@@ -68,15 +68,24 @@
 }
 
 .modal-content {
-    background: #1a1a1a;
+    background: linear-gradient(145deg, #1a1a1a, #111);
     padding: 30px;
-    border-radius: 20px;
+    border-radius: 24px;
     border: 1px solid #333;
-    width: 90%;
-    max-width: 400px;
+    width: 85%;
+    max-width: 380px;
     text-align: center;
-    box-shadow: 0 10px 30px rgba(0,0,0,1);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.8);
 }
+
+.modal-content h3 {
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+    background: linear-gradient(to right, #fff, #888);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
 
 .modal-content input {
     background: #000;
@@ -182,6 +191,21 @@
     color: #2ecc71;
     flex-shrink: 0; 
 }
+    
+.btn-remove-friend {
+    background: #e74c3c !important;
+    width: 30px !important;
+    height: 30px !important;
+    padding: 0 !important;
+    margin-left: 10px !important;
+    font-size: 0.8rem !important;
+    border-radius: 8px !important;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+}
+    
 
         #zone-panel { align-self: center; width: 100%; max-width: 400px; text-align: center; margin-bottom: 10px; }
         #zone-status { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
@@ -234,8 +258,21 @@
 }
 
 .friend-item {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 10px; background: #1a1a1a; margin-bottom: 5px; border-radius: 8px;
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+    padding: 12px; 
+    background: #1a1a1a; 
+    margin-bottom: 8px; 
+    border-radius: 15px; /* Arrondis plus doux comme sur ta capture */
+    border: 1px solid #333;
+}
+
+/* On s'assure que le bouton ACCEPTER ne soit pas trop criard */
+#friends-requests button {
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
 
     
@@ -473,37 +510,57 @@ function customDialog({ title, text, showInput = false, inputType = 'text', plac
     });
 }
 
-
 function listenToFriends() {
+    // --- 1. PARTIE DEMANDES D'AMIS ---
     onValue(ref(db, `requests/${myUser.uid}`), (snap) => {
         const reqs = snap.val();
         const container = document.getElementById('friends-requests');
-        container.innerHTML = reqs ? "<h4>Demandes :</h4>" : "";
+        container.innerHTML = reqs ? "<h4 style='color:#aaa; margin-bottom:10px;'>Demandes en attente :</h4>" : "";
         if (reqs) {
             Object.keys(reqs).forEach(fromUid => {
                 const r = reqs[fromUid];
                 const div = document.createElement('div');
                 div.className = 'friend-item';
-                div.innerHTML = `<span>${r.from}</span>
-                    <div>
-                        <button style="padding:5px; margin:0; width:auto; background:#2ecc71;" onclick="acceptFriend('${fromUid}', '${r.from}')">✔</button>
-                        <button style="padding:5px; margin:0; width:auto; background:#e74c3c;" onclick="refuseFriend('${fromUid}')">X</button>
+                div.style.flexDirection = "column";
+                div.style.alignItems = "stretch";
+                div.style.gap = "10px";
+                
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-weight:bold; color:#fff;">👤 ${r.from}</span>
+                        <span style="font-size:0.7rem; color:#aaa;">veut être ton ami</span>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button style="flex:2; padding:10px; margin:0; background:#2ecc71; font-size:0.8rem; font-weight:bold; border-radius:10px;" onclick="acceptFriend('${fromUid}', '${r.from}')">ACCEPTER</button>
+                        <button style="flex:1; padding:10px; margin:0; background:#e74c3c; font-size:0.8rem; font-weight:bold; border-radius:10px;" onclick="refuseFriend('${fromUid}')">REFUSER</button>
                     </div>`;
                 container.appendChild(div);
             });
         }
     });
 
+    // --- 2. PARTIE LISTE D'AMIS (Harmonisée) ---
     onValue(ref(db, `friends/${myUser.uid}`), (snap) => {
         const friends = snap.val();
         const container = document.getElementById('friends-list');
-        container.innerHTML = friends ? "<h4>Tes Amis :</h4>" : "<p>Aucun ami.</p>";
+        container.innerHTML = friends ? "<h4 style='color:#aaa; margin-top:20px; margin-bottom:10px;'>Tes Amis :</h4>" : "<p style='text-align:center; color:#666; margin-top:20px;'>Aucun ami pour le moment.</p>";
         if (friends) {
             Object.keys(friends).forEach(fUid => {
+                const fName = friends[fUid].name;
                 const div = document.createElement('div');
                 div.className = 'friend-item';
-                div.innerHTML = `<span>${friends[fUid].name}</span>
-                    <button style="padding:5px; margin:0; width:auto;" onclick="initiateTrade('${fUid}', '${friends[fUid].name}')">🤝 Échanger</button>`;
+                div.style.flexDirection = "column"; // On passe aussi en colonne pour les amis
+                div.style.alignItems = "stretch";
+                div.style.gap = "10px";
+
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-weight:bold; color:#fff;">👤 ${fName}</span>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button style="flex:2; padding:10px; margin:0; background:#3498db; font-size:0.8rem; font-weight:bold; border-radius:10px; box-shadow: 0 4px 10px rgba(52, 152, 219, 0.2);" onclick="initiateTrade('${fUid}', '${fName}')">🤝 ÉCHANGER</button>
+                        <button style="flex:1; padding:10px; margin:0; background:#444; font-size:0.8rem; font-weight:bold; border-radius:10px;" onclick="removeFriend('${fUid}', '${fName}')">SUPPRIMER</button>
+                    </div>`;
                 container.appendChild(div);
             });
         }
@@ -530,15 +587,21 @@ let tradeListener = null;
 
 // --- 1. ENVOYER UNE DEMANDE D'ÉCHANGE ---
 window.initiateTrade = async (partnerUid, partnerName) => {
-    if (confirm(`Envoyer une proposition d'échange à ${partnerName} ?`)) {
+    const confirmation = await customDialog({
+        title: "🤝 Proposition d'échange",
+        text: `Veux-tu envoyer une offre d'échange à ${partnerName} ?`
+    });
+
+    if (confirmation) {
         await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
             from: myUser.username,
             fromUid: myUser.uid,
             timestamp: Date.now()
         });
-         showToast("Demande d'échange envoyée !", "#e74c3c");
+        showToast("Demande d'échange envoyée !", "#2ecc71");
     }
 };
+
 
 // --- 2. ÉCOUTER LES DEMANDES D'ÉCHANGE (À mettre dans listenToFriends) ---
 function listenToTradeRequests() {
@@ -548,15 +611,20 @@ function listenToTradeRequests() {
         
         Object.keys(reqs).forEach(async (fromUid) => {
             const r = reqs[fromUid];
-            if (confirm(`${r.from} veut faire un échange avec toi ! Accepter ?`)) {
-                // Créer la session d'échange
+            
+            // Remplace confirm par customDialog
+            const accept = await customDialog({
+                title: "🤝 Demande d'échange",
+                text: `${r.from} souhaite commercer avec toi !`
+            });
+
+            if (accept) {
                 const tradeId = myUser.uid < fromUid ? `${myUser.uid}_${fromUid}` : `${fromUid}_${myUser.uid}`;
                 await set(ref(db, `trades/${tradeId}`), {
                     status: "active",
                     [myUser.uid]: { ready: false, coins: 0, zoneId: "" },
                     [fromUid]: { ready: false, coins: 0, zoneId: "" }
                 });
-                // Supprimer la requête
                 await set(ref(db, `tradeRequests/${myUser.uid}/${fromUid}`), null);
                 openTradeScreen(tradeId, r.from);
             } else {
@@ -565,7 +633,7 @@ function listenToTradeRequests() {
         });
     });
 
-    // Écouter si une session est créée pour nous (cas où on est celui qui a envoyé)
+    // Écouter si une session est créée pour nous
     onValue(ref(db, `trades`), (snap) => {
         const allTrades = snap.val();
         if (!allTrades) return;
@@ -578,6 +646,7 @@ function listenToTradeRequests() {
         });
     });
 }
+
 
 // --- 3. L'INTERFACE D'ÉCHANGE AMÉLIORÉE ---
 function openTradeScreen(tradeId, partnerName) {
@@ -668,13 +737,28 @@ function closeTrade() {
 }
 
 window.removeFriend = async (fUid, fName) => {
-    if (confirm(`Supprimer ${fName} de tes amis ?`)) {
+    // On utilise ta modale personnalisée
+    const confirmed = await customDialog({
+        title: "🗑️ Supprimer l'ami",
+        text: `Es-tu sûr de vouloir retirer ${fName} de tes amis ? Vous ne pourrez plus faire d'échanges.`
+    });
+
+    if (confirmed) {
         const updates = {};
+        // On supprime des deux côtés (pour moi et pour lui)
         updates[`friends/${myUser.uid}/${fUid}`] = null;
         updates[`friends/${fUid}/${myUser.uid}`] = null;
-        await update(ref(db), updates);
+        
+        try {
+            await update(ref(db), updates);
+            showToast(`${fName} a été supprimé.`, "#e74c3c");
+        } catch (error) {
+            console.error(error);
+            showToast("Erreur lors de la suppression.", "#e74c3c");
+        }
     }
 };
+
 
 // --- 5. FINALISATION (Mouvement des ressources) ---
 async function finalizeTrade() {
