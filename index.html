@@ -19,6 +19,77 @@
 
         .hidden { display: none !important; }
 
+/* --- Système de Toast --- */
+#toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.toast {
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 12px 25px;
+    border-radius: 50px;
+    border-left: 4px solid #3498db;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    backdrop-filter: blur(10px);
+    animation: slideUp 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
+    font-weight: bold;
+    min-width: 200px;
+    text-align: center;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeOut {
+    to { opacity: 0; transform: translateY(-20px); }
+}
+
+/* --- Modale Custom (Prompt/Alert) --- */
+#custom-modal {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    backdrop-filter: blur(5px);
+}
+
+.modal-content {
+    background: #1a1a1a;
+    padding: 30px;
+    border-radius: 20px;
+    border: 1px solid #333;
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,1);
+}
+
+.modal-content input {
+    background: #000;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 15px 0;
+    border-radius: 10px;
+}
+    
+    
 #debug-btn {
     position: absolute;
     top: 130px;
@@ -330,7 +401,7 @@ document.getElementById('send-friend-req').onclick = async () => {
 
     if (!targetUsername) return;
     if (targetUsername === myUser.username) {
-        alert("Tu ne peux pas t'ajouter toi-même !");
+        showToast("Tu ne peux pas t'ajouter toi-même !", "#e74c3c");
         return;
     }
 
@@ -339,7 +410,7 @@ document.getElementById('send-friend-req').onclick = async () => {
     );
 
     if (!targetEntry) {
-        alert("Utilisateur '" + targetUsername + "' introuvable. Vérifie l'orthographe !");
+         showToast("Utilisateur '" + targetUsername + "' introuvable. Vérifie l'orthographe !", "#e74c3c");
         return;
     }
 
@@ -351,14 +422,56 @@ document.getElementById('send-friend-req').onclick = async () => {
             fromUid: myUser.uid,
             timestamp: Date.now()
         });
-        alert("Demande envoyée à " + targetUsername + " !");
+         showToast("Demande envoyée à " + targetUsername + " !", "#e74c3c");
         document.getElementById('add-friend-uid').value = "";
     } catch (error) {
         console.error("Erreur Firebase :", error);
-        alert("Erreur lors de l'envoi.");
+         showToast("Erreur lors de l'envoi.", "#e74c3c");
     }
 };
 
+// --- SYSTÈME DE TOAST ---
+function showToast(message, color = '#3498db') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.style.borderColor = color;
+    toast.innerText = message;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+// --- SYSTÈME DE MODALE PROMISE (Remplace Alert/Prompt) ---
+function customDialog({ title, text, showInput = false, inputType = 'text', placeholder = '' }) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('custom-modal');
+        const container = document.getElementById('modal-input-container');
+        document.getElementById('modal-title').innerText = title;
+        document.getElementById('modal-text').innerText = text;
+        container.innerHTML = '';
+        
+        let inputField = null;
+        if (showInput) {
+            inputField = document.createElement('input');
+            inputField.type = inputType;
+            inputField.placeholder = placeholder;
+            container.appendChild(inputField);
+        }
+
+        modal.classList.remove('hidden');
+
+        document.getElementById('modal-confirm').onclick = () => {
+            const value = inputField ? inputField.value : true;
+            modal.classList.add('hidden');
+            resolve(value);
+        };
+
+        document.getElementById('modal-cancel').onclick = () => {
+            modal.classList.add('hidden');
+            resolve(null);
+        };
+    });
+}
 
 
 function listenToFriends() {
@@ -404,7 +517,7 @@ window.acceptFriend = async (fUid, fName) => {
     updates[`requests/${myUser.uid}/${fUid}`] = null; 
     
     await update(ref(db), updates);
-    alert("Ami ajouté !");
+     showToast("Ami ajouté !", "#e74c3c");
 };
 
 window.refuseFriend = async (fUid) => {
@@ -423,7 +536,7 @@ window.initiateTrade = async (partnerUid, partnerName) => {
             fromUid: myUser.uid,
             timestamp: Date.now()
         });
-        alert("Demande d'échange envoyée !");
+         showToast("Demande d'échange envoyée !", "#e74c3c");
     }
 };
 
@@ -560,7 +673,7 @@ async function finalizeTrade() {
 
     await update(ref(db), updates);
     await set(ref(db, `trades/${currentTradeId}`), null);
-    alert("Échange terminé !");
+     showToast("Échange terminé !", "#e74c3c");
     closeTrade();
 }
     
@@ -599,7 +712,7 @@ async function offlineIncomeCheck() {
             let totalOfflineIncome = dailyIncome * intervalsPassed;
 
             if (totalOfflineIncome > 0) {
-                alert(`💰 RÉCOLTE QUOTIDIENNE : +${totalOfflineIncome} pièces pour vos ${intervalsPassed} jour(s) de domination !`);
+                 showToast(`💰 RÉCOLTE QUOTIDIENNE : +${totalOfflineIncome} pièces pour vos ${intervalsPassed} jour(s) de domination !`, "#e74c3c");
                 
                 const updates = {};
                 updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + totalOfflineIncome;
@@ -719,7 +832,7 @@ map.on('click', () => {
         }
 
         function startGPS() {
-            if (!navigator.geolocation) return alert("GPS non supporté.");
+            if (!navigator.geolocation) return  showToast("GPS non supporté.", "#e74c3c");
             watchId = navigator.geolocation.watchPosition(
     (pos) => {
         const lat = pos.coords.latitude;
@@ -1030,7 +1143,7 @@ function checkCurrentZoneContext() {
             let coinsGained = 0;
             if (newTotal % 10 === 0) {
                 coinsGained = 15;
-                alert("Bonus de conquête ! +15 pièces !");
+                 showToast("Bonus de conquête ! +15 pièces !", "#e74c3c");
             }
 
             updates[`users/${myUser.uid}/totalCaptured`] = newTotal;
@@ -1101,7 +1214,7 @@ function checkCurrentZoneContext() {
             updates[`zones/${zoneId}/price`] = 0;
 
             await update(ref(db), updates);
-            alert("Zone achetée avec succès !");
+             showToast("Zone achetée avec succès !", "#e74c3c");
         }
 
         async function collectIncome() {
@@ -1291,7 +1404,7 @@ const PROTECTION_PLANS = [
 
 async function protectZone(zoneId, plan) {
     if (myUser.coins < plan.cost) {
-        alert("Pas assez de pièces !");
+         showToast("Pas assez de pièces !", "#e74c3c");
         return;
     }
 
@@ -1305,7 +1418,7 @@ async function protectZone(zoneId, plan) {
     updates[`zones/${zoneId}/protectionExpiry`] = newExpiry;
 
     await update(ref(db), updates);
-    alert(`Bouclier activé jusqu'au ${new Date(newExpiry).toLocaleDateString()} !`);
+     showToast(`Bouclier activé jusqu'au ${new Date(newExpiry).toLocaleDateString()} !`, "#e74c3c");
 }
 
 function getProtectionStatus(zone) {
@@ -1467,6 +1580,18 @@ function getProtectionStatus(zone) {
     </div>
 </div>
 
+<div id="toast-container"></div>
+<div id="custom-modal" class="hidden">
+    <div class="modal-content">
+        <h3 id="modal-title">Titre</h3>
+        <p id="modal-text" style="color: #aaa;"></p>
+        <div id="modal-input-container"></div>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button id="modal-cancel" style="background:#444;">Annuler</button>
+            <button id="modal-confirm">Valider</button>
+        </div>
+    </div>
+</div>
     
     
 </body>
