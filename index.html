@@ -629,6 +629,37 @@ document.getElementById('cancel-trade').onclick = async () => {
     }
 };
 
+let tradeCountdownInterval = null;
+
+function startTradeCountdown(tradeId) {
+    if (tradeCountdownInterval) return;
+    let count = 3;
+    const statusDiv = document.getElementById('trade-status');
+    
+    tradeCountdownInterval = setInterval(async () => {
+        statusDiv.innerText = `L'ÉCHANGE DÉBUTE DANS ${count}...`;
+        if (count <= 0) {
+            clearInterval(tradeCountdownInterval);
+            tradeCountdownInterval = null;
+            // Un seul des deux joueurs déclenche la finalisation (le premier dans l'ordre alpha par ex)
+            const parts = tradeId.split('_');
+            if (myUser.uid === parts[0]) {
+                await finalizeTrade();
+            }
+        }
+        count--;
+    }, 1000);
+}
+
+function stopTradeCountdown() {
+    if (tradeCountdownInterval) {
+        clearInterval(tradeCountdownInterval);
+        tradeCountdownInterval = null;
+        document.getElementById('trade-status').innerText = "";
+    }
+}
+    
+    
 function closeTrade() {
     currentTradeId = null;
     document.getElementById('trade-screen').classList.add('hidden');
@@ -685,7 +716,8 @@ function startGame() {
     initMap();
     listenToDatabase();
     startGPS();
-    listenToFriends(); 
+    listenToFriends();
+    listenToTradeRequests();
 
     setTimeout(() => {
         offlineIncomeCheck();
@@ -695,6 +727,30 @@ function startGame() {
     updateHUD();
 }
 
+// Mise à jour de l'offre de pièces en temps réel
+document.getElementById('trade-my-coins').oninput = (e) => {
+    if (!currentTradeId) return;
+    const val = parseInt(e.target.value) || 0;
+    if (val > myUser.coins) {
+        e.target.value = myUser.coins;
+        return;
+    }
+    update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { coins: val, ready: false });
+};
+
+// Mise à jour de la zone proposée
+document.getElementById('trade-my-zone').onchange = (e) => {
+    if (!currentTradeId) return;
+    update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { zoneId: e.target.value, ready: false });
+};
+
+// Bouton de validation de l'offre
+document.getElementById('accept-trade').onclick = async () => {
+    if (!currentTradeId) return;
+    await update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { ready: true });
+    showToast("Offre verrouillée. En attente du partenaire...", "#2ecc71");
+};
+    
 
 async function offlineIncomeCheck() {
     if (!myUser.uid || !myUser.lastIncomeTime) return;
