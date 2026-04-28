@@ -238,6 +238,17 @@
     padding: 10px; background: #1a1a1a; margin-bottom: 5px; border-radius: 8px;
 }
 
+#modal-input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+#modal-input-container button {
+    max-width: 100%; /* Pour que les boutons prennent toute la largeur de la modale */
+}
+    
     
         .leaflet-marker-pane { z-index: 600 !important; }
         .leaflet-tooltip-pane { z-index: 650 !important; }
@@ -1292,24 +1303,58 @@ function selectZone(zoneId) {
         btnProtect.style.color = "#f1c40f";
         btnProtect.innerHTML = protection.active ? "🛡️ PROLONGER BOUCLIER" : "🛡️ PROTÉGER LA ZONE";
         
-        // --- DANS selectZone(zoneId) ---
+        // Dans la fonction selectZone, remplace le onclick de btnProtect :
 btnProtect.onclick = (e) => {
     e.stopPropagation();
-    openProtectionModal(zoneId, zone); // Nouvelle fonction à créer
-};
+    
+    const modal = document.getElementById('custom-modal');
+    const title = document.getElementById('modal-title');
+    const text = document.getElementById('modal-text');
+    const container = document.getElementById('modal-input-container');
+    
+    title.innerText = "Bouclier de Protection";
+    text.innerText = "Sélectionnez un plan pour protéger votre zone contre les captures ennemies.";
+    container.innerHTML = ''; // On vide l'input par défaut
 
-            
-            const plans = [
-                { duration: 86400000, cost: 50 },
-                { duration: 604800000, cost: 300 },
-                { duration: 2592000000, cost: 1000 }
-            ];
+    // Création des 3 boutons de plan
+    const plans = [
+        { name: "1 Jour", cost: 50, duration: 86400000 },
+        { name: "1 Semaine", cost: 300, duration: 604800000 },
+        { name: "1 Mois", cost: 1000, duration: 2592000000 }
+    ];
 
-            if (choice === "1") protectZone(zoneId, plans[0]);
-            else if (choice === "2") protectZone(zoneId, plans[1]);
-            else if (choice === "3") protectZone(zoneId, plans[2]);
+    plans.forEach(plan => {
+        const b = document.createElement('button');
+        const canAfford = myUser.coins >= plan.cost;
+        
+        b.style.marginBottom = "10px";
+        b.style.background = canAfford ? "#2c3e50" : "#333";
+        b.style.border = canAfford ? "1px solid #f1c40f" : "1px solid #555";
+        b.style.opacity = canAfford ? "1" : "0.6";
+        
+        b.innerHTML = `<div style="display:flex; justify-content:space-between; width:100%;">
+                        <span>${plan.name}</span>
+                        <span style="color:#f1c40f;">${plan.cost} 💰</span>
+                       </div>`;
+        
+        b.onclick = () => {
+            if (canAfford) {
+                protectZone(zoneId, plan);
+                modal.classList.add('hidden');
+            } else {
+                showToast("Fonds insuffisants !", "#e74c3c");
+            }
         };
-        actionsDiv.appendChild(btnProtect);
+        container.appendChild(b);
+    });
+
+    // On cache les boutons de validation par défaut de la modale
+    document.getElementById('modal-confirm').classList.add('hidden');
+    document.getElementById('modal-cancel').innerText = "Fermer";
+    document.getElementById('modal-cancel').onclick = () => modal.classList.add('hidden');
+
+    modal.classList.remove('hidden');
+};
 
         if (protection.active) {
             let expiryInfo = document.createElement('div');
@@ -1368,66 +1413,8 @@ btnProtect.onclick = (e) => {
     }
 }
 
-function openProtectionModal(zoneId, zone) {
-    const modal = document.getElementById('custom-modal');
-    const title = document.getElementById('modal-title');
-    const text = document.getElementById('modal-text');
-    const container = document.getElementById('modal-input-container');
-    const confirmBtn = document.getElementById('modal-confirm');
-    const cancelBtn = document.getElementById('modal-cancel');
 
-    title.innerText = "Bouclier de Protection";
-    text.innerText = "Choisissez la durée de protection pour votre territoire :";
-    container.innerHTML = ''; // On vide le contenu précédent
-    confirmBtn.classList.add('hidden'); // On cache le bouton valider par défaut
-    cancelBtn.innerText = "Fermer";
 
-    // Configuration des 3 plans
-    const plans = [
-        { label: "1 Jour", cost: 50, duration: 86400000, color: "#3498db" },
-        { label: "1 Semaine", cost: 300, duration: 604800000, color: "#9b59b6" },
-        { label: "1 Mois", cost: 1000, duration: 2592000000, color: "#f1c40f" }
-    ];
-
-    plans.forEach(plan => {
-        const btn = document.createElement('button');
-        const canAfford = myUser.coins >= plan.cost;
-        
-        btn.style.cssText = `
-            background: ${canAfford ? plan.color : '#333'};
-            margin: 5px 0;
-            width: 100%;
-            opacity: ${canAfford ? '1' : '0.5'};
-            cursor: ${canAfford ? 'pointer' : 'not-allowed'};
-        `;
-        
-        btn.innerHTML = `${plan.label} <br> <span style="font-size:0.8rem;">💰 ${plan.cost}</span>`;
-        
-        btn.onclick = async () => {
-            if (!canAfford) {
-                showToast("Fonds insuffisants !", "#e74c3c");
-                return;
-            }
-            
-            // Demande de confirmation interne à la modale
-            if (confirm(`Acheter une protection de ${plan.label} pour ${plan.cost}💰 ?`)) {
-                await protectZone(zoneId, plan);
-                modal.classList.add('hidden');
-            }
-        };
-        
-        container.appendChild(btn);
-    });
-
-    modal.classList.remove('hidden');
-
-    cancelBtn.onclick = () => {
-        modal.classList.add('hidden');
-        confirmBtn.classList.remove('hidden'); // On le remet pour les autres usages
-    };
-}
-
-    
 function updateLeaderboard() {
     const sortedUsers = Object.values(allUsers).sort((a, b) => (b.zonesCount || 0) - (a.zonesCount || 0));
     const top3 = sortedUsers.slice(0, 3);
@@ -1459,11 +1446,17 @@ const PROTECTION_PLANS = [
 ];
 
 async function protectZone(zoneId, plan) {
-    if (myUser.coins < plan.cost) return;
+    // Double vérification de sécurité
+    if (myUser.coins < plan.cost) {
+        showToast("Pas assez de pièces !", "#e74c3c");
+        return;
+    }
 
     const now = Date.now();
-    // On récupère l'expiration actuelle pour cumuler si besoin
+    // On récupère l'expiration actuelle si elle existe, sinon on prend 'maintenant'
     const currentExpiry = (allZones[zoneId] && allZones[zoneId].protectionExpiry) || now;
+    
+    // Si un bouclier est déjà actif, on ajoute la durée à la suite, sinon on part de maintenant
     const baseTime = Math.max(now, currentExpiry);
     const newExpiry = baseTime + plan.duration;
 
@@ -1473,23 +1466,11 @@ async function protectZone(zoneId, plan) {
 
     try {
         await update(ref(db), updates);
-        showToast(`🛡️ Protection activée !`, "#2ecc71");
+        showToast(`🛡️ Bouclier activé jusqu'au ${new Date(newExpiry).toLocaleDateString()} !`, "#2ecc71");
     } catch (e) {
         showToast("Erreur lors de l'achat", "#e74c3c");
     }
 }
-
-
-function getProtectionStatus(zone) {
-    if (!zone || !zone.protectionExpiry) return { active: false };
-    const remaining = zone.protectionExpiry - Date.now();
-    return {
-        active: remaining > 0,
-        remaining: remaining,
-        date: new Date(zone.protectionExpiry).toLocaleString()
-    };
-}
-    
     
 
     document.getElementById('debug-btn').addEventListener('click', () => {
@@ -1651,6 +1632,7 @@ function getProtectionStatus(zone) {
         </div>
     </div>
 </div>
-        
+    
+    
 </body>
 </html>
