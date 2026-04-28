@@ -238,17 +238,6 @@
     padding: 10px; background: #1a1a1a; margin-bottom: 5px; border-radius: 8px;
 }
 
-#modal-input-container {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin: 20px 0;
-}
-
-#modal-input-container button {
-    max-width: 100%; /* Pour que les boutons prennent toute la largeur de la modale */
-}
-    
     
         .leaflet-marker-pane { z-index: 600 !important; }
         .leaflet-tooltip-pane { z-index: 650 !important; }
@@ -1303,58 +1292,48 @@ function selectZone(zoneId) {
         btnProtect.style.color = "#f1c40f";
         btnProtect.innerHTML = protection.active ? "🛡️ PROLONGER BOUCLIER" : "🛡️ PROTÉGER LA ZONE";
         
-        // Dans la fonction selectZone, remplace le onclick de btnProtect :
-btnProtect.onclick = (e) => {
-    e.stopPropagation();
-    
-    const modal = document.getElementById('custom-modal');
-    const title = document.getElementById('modal-title');
-    const text = document.getElementById('modal-text');
-    const container = document.getElementById('modal-input-container');
-    
-    title.innerText = "Bouclier de Protection";
-    text.innerText = "Sélectionnez un plan pour protéger votre zone contre les captures ennemies.";
-    container.innerHTML = ''; // On vide l'input par défaut
+        btnProtect.onclick = async (e) => {
+            e.stopPropagation();
+            
+            // Préparation de la modale custom avec les 3 plans
+            const modal = document.getElementById('custom-modal');
+            const container = document.getElementById('modal-input-container');
+            document.getElementById('modal-title').innerText = "Bouclier de Protection";
+            document.getElementById('modal-text').innerText = "Choisissez la durée de votre immunité :";
+            document.getElementById('modal-confirm').classList.add('hidden'); // On cache le bouton valider car le clic sur le plan valide
+            
+            container.innerHTML = '';
+            
+            PROTECTION_PLANS.forEach(plan => {
+                const btn = document.createElement('button');
+                btn.className = 'protection-plan-btn';
+                const canAfford = myUser.coins >= plan.cost;
+                btn.disabled = !canAfford;
+                
+                btn.innerHTML = `
+                    <div class="plan-info">
+                        <span class="plan-name">${plan.label}</span>
+                        <span class="plan-duration">${canAfford ? 'Protection totale' : 'Fonds insuffisants'}</span>
+                    </div>
+                    <div class="plan-price">${plan.cost} 💰</div>
+                `;
+                
+                btn.onclick = () => {
+                    protectZone(zoneId, plan);
+                    modal.classList.add('hidden');
+                    document.getElementById('modal-confirm').classList.remove('hidden');
+                };
+                container.appendChild(btn);
+            });
 
-    // Création des 3 boutons de plan
-    const plans = [
-        { name: "1 Jour", cost: 50, duration: 86400000 },
-        { name: "1 Semaine", cost: 300, duration: 604800000 },
-        { name: "1 Mois", cost: 1000, duration: 2592000000 }
-    ];
+            modal.classList.remove('hidden');
 
-    plans.forEach(plan => {
-        const b = document.createElement('button');
-        const canAfford = myUser.coins >= plan.cost;
-        
-        b.style.marginBottom = "10px";
-        b.style.background = canAfford ? "#2c3e50" : "#333";
-        b.style.border = canAfford ? "1px solid #f1c40f" : "1px solid #555";
-        b.style.opacity = canAfford ? "1" : "0.6";
-        
-        b.innerHTML = `<div style="display:flex; justify-content:space-between; width:100%;">
-                        <span>${plan.name}</span>
-                        <span style="color:#f1c40f;">${plan.cost} 💰</span>
-                       </div>`;
-        
-        b.onclick = () => {
-            if (canAfford) {
-                protectZone(zoneId, plan);
+            document.getElementById('modal-cancel').onclick = () => {
                 modal.classList.add('hidden');
-            } else {
-                showToast("Fonds insuffisants !", "#e74c3c");
-            }
+                document.getElementById('modal-confirm').classList.remove('hidden');
+            };
         };
-        container.appendChild(b);
-    });
-
-    // On cache les boutons de validation par défaut de la modale
-    document.getElementById('modal-confirm').classList.add('hidden');
-    document.getElementById('modal-cancel').innerText = "Fermer";
-    document.getElementById('modal-cancel').onclick = () => modal.classList.add('hidden');
-
-    modal.classList.remove('hidden');
-};
+        actionsDiv.appendChild(btnProtect);
 
         if (protection.active) {
             let expiryInfo = document.createElement('div');
@@ -1375,9 +1354,15 @@ btnProtect.onclick = (e) => {
             };
         } else {
             btnSell.innerText = "Mettre en vente";
-            btnSell.onclick = (e) => {
+            btnSell.onclick = async (e) => {
                 e.stopPropagation();
-                let price = prompt("Prix de vente (pièces) ?");
+                const price = await customDialog({
+                    title: "Mise en vente",
+                    text: "À quel prix souhaites-tu vendre cette zone ?",
+                    showInput: true,
+                    inputType: 'number',
+                    placeholder: "Prix en pièces..."
+                });
                 if(price && !isNaN(price) && parseInt(price) > 0) {
                     setZoneForSale(zoneId, true, parseInt(price));
                 }
@@ -1446,17 +1431,13 @@ const PROTECTION_PLANS = [
 ];
 
 async function protectZone(zoneId, plan) {
-    // Double vérification de sécurité
     if (myUser.coins < plan.cost) {
-        showToast("Pas assez de pièces !", "#e74c3c");
+         showToast("Pas assez de pièces !", "#e74c3c");
         return;
     }
 
     const now = Date.now();
-    // On récupère l'expiration actuelle si elle existe, sinon on prend 'maintenant'
     const currentExpiry = (allZones[zoneId] && allZones[zoneId].protectionExpiry) || now;
-    
-    // Si un bouclier est déjà actif, on ajoute la durée à la suite, sinon on part de maintenant
     const baseTime = Math.max(now, currentExpiry);
     const newExpiry = baseTime + plan.duration;
 
@@ -1464,13 +1445,20 @@ async function protectZone(zoneId, plan) {
     updates[`users/${myUser.uid}/coins`] = myUser.coins - plan.cost;
     updates[`zones/${zoneId}/protectionExpiry`] = newExpiry;
 
-    try {
-        await update(ref(db), updates);
-        showToast(`🛡️ Bouclier activé jusqu'au ${new Date(newExpiry).toLocaleDateString()} !`, "#2ecc71");
-    } catch (e) {
-        showToast("Erreur lors de l'achat", "#e74c3c");
-    }
+    await update(ref(db), updates);
+     showToast(`Bouclier activé jusqu'au ${new Date(newExpiry).toLocaleDateString()} !`, "#e74c3c");
 }
+
+function getProtectionStatus(zone) {
+    if (!zone || !zone.protectionExpiry) return { active: false };
+    const remaining = zone.protectionExpiry - Date.now();
+    return {
+        active: remaining > 0,
+        remaining: remaining,
+        date: new Date(zone.protectionExpiry).toLocaleString()
+    };
+}
+    
     
 
     document.getElementById('debug-btn').addEventListener('click', () => {
@@ -1542,6 +1530,38 @@ async function protectZone(zoneId, plan) {
     transform: scale(0.9); 
     background: #34495e; 
 }
+    
+/* Styles pour les options de protection dans la modale */
+.protection-plan-btn {
+    background: #222;
+    border: 1px solid #444;
+    padding: 15px;
+    margin: 10px 0;
+    border-radius: 12px;
+    width: 100%;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.protection-plan-btn:not(:disabled):hover {
+    border-color: #f1c40f;
+    background: #2c3e50;
+}
+
+.protection-plan-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.plan-info .plan-name { display: block; font-weight: bold; color: #fff; }
+.plan-info .plan-duration { font-size: 0.8rem; color: #aaa; }
+.plan-price { color: #f1c40f; font-weight: bold; }
+    
+    
 </style>
 
 <div id="shop-screen" class="screen hidden" style="z-index: 3000;">
