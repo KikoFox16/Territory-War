@@ -1292,14 +1292,12 @@ function selectZone(zoneId) {
         btnProtect.style.color = "#f1c40f";
         btnProtect.innerHTML = protection.active ? "🛡️ PROLONGER BOUCLIER" : "🛡️ PROTÉGER LA ZONE";
         
-        btnProtect.onclick = (e) => {
-            e.stopPropagation();
-            let choice = prompt(
-                "Choisir un plan de protection :\n" +
-                "1. 1 Jour (50💰)\n" +
-                "2. 1 Semaine (300💰)\n" +
-                "3. 1 Mois (1000💰)"
-            );
+        // --- DANS selectZone(zoneId) ---
+btnProtect.onclick = (e) => {
+    e.stopPropagation();
+    openProtectionModal(zoneId, zone); // Nouvelle fonction à créer
+};
+
             
             const plans = [
                 { duration: 86400000, cost: 50 },
@@ -1370,8 +1368,66 @@ function selectZone(zoneId) {
     }
 }
 
+function openProtectionModal(zoneId, zone) {
+    const modal = document.getElementById('custom-modal');
+    const title = document.getElementById('modal-title');
+    const text = document.getElementById('modal-text');
+    const container = document.getElementById('modal-input-container');
+    const confirmBtn = document.getElementById('modal-confirm');
+    const cancelBtn = document.getElementById('modal-cancel');
 
+    title.innerText = "Bouclier de Protection";
+    text.innerText = "Choisissez la durée de protection pour votre territoire :";
+    container.innerHTML = ''; // On vide le contenu précédent
+    confirmBtn.classList.add('hidden'); // On cache le bouton valider par défaut
+    cancelBtn.innerText = "Fermer";
 
+    // Configuration des 3 plans
+    const plans = [
+        { label: "1 Jour", cost: 50, duration: 86400000, color: "#3498db" },
+        { label: "1 Semaine", cost: 300, duration: 604800000, color: "#9b59b6" },
+        { label: "1 Mois", cost: 1000, duration: 2592000000, color: "#f1c40f" }
+    ];
+
+    plans.forEach(plan => {
+        const btn = document.createElement('button');
+        const canAfford = myUser.coins >= plan.cost;
+        
+        btn.style.cssText = `
+            background: ${canAfford ? plan.color : '#333'};
+            margin: 5px 0;
+            width: 100%;
+            opacity: ${canAfford ? '1' : '0.5'};
+            cursor: ${canAfford ? 'pointer' : 'not-allowed'};
+        `;
+        
+        btn.innerHTML = `${plan.label} <br> <span style="font-size:0.8rem;">💰 ${plan.cost}</span>`;
+        
+        btn.onclick = async () => {
+            if (!canAfford) {
+                showToast("Fonds insuffisants !", "#e74c3c");
+                return;
+            }
+            
+            // Demande de confirmation interne à la modale
+            if (confirm(`Acheter une protection de ${plan.label} pour ${plan.cost}💰 ?`)) {
+                await protectZone(zoneId, plan);
+                modal.classList.add('hidden');
+            }
+        };
+        
+        container.appendChild(btn);
+    });
+
+    modal.classList.remove('hidden');
+
+    cancelBtn.onclick = () => {
+        modal.classList.add('hidden');
+        confirmBtn.classList.remove('hidden'); // On le remet pour les autres usages
+    };
+}
+
+    
 function updateLeaderboard() {
     const sortedUsers = Object.values(allUsers).sort((a, b) => (b.zonesCount || 0) - (a.zonesCount || 0));
     const top3 = sortedUsers.slice(0, 3);
@@ -1403,12 +1459,10 @@ const PROTECTION_PLANS = [
 ];
 
 async function protectZone(zoneId, plan) {
-    if (myUser.coins < plan.cost) {
-         showToast("Pas assez de pièces !", "#e74c3c");
-        return;
-    }
+    if (myUser.coins < plan.cost) return;
 
     const now = Date.now();
+    // On récupère l'expiration actuelle pour cumuler si besoin
     const currentExpiry = (allZones[zoneId] && allZones[zoneId].protectionExpiry) || now;
     const baseTime = Math.max(now, currentExpiry);
     const newExpiry = baseTime + plan.duration;
@@ -1417,9 +1471,14 @@ async function protectZone(zoneId, plan) {
     updates[`users/${myUser.uid}/coins`] = myUser.coins - plan.cost;
     updates[`zones/${zoneId}/protectionExpiry`] = newExpiry;
 
-    await update(ref(db), updates);
-     showToast(`Bouclier activé jusqu'au ${new Date(newExpiry).toLocaleDateString()} !`, "#e74c3c");
+    try {
+        await update(ref(db), updates);
+        showToast(`🛡️ Protection activée !`, "#2ecc71");
+    } catch (e) {
+        showToast("Erreur lors de l'achat", "#e74c3c");
+    }
 }
+
 
 function getProtectionStatus(zone) {
     if (!zone || !zone.protectionExpiry) return { active: false };
@@ -1592,7 +1651,6 @@ function getProtectionStatus(zone) {
         </div>
     </div>
 </div>
-    
-    
+        
 </body>
 </html>
