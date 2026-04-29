@@ -511,7 +511,7 @@ function customDialog({ title, text, showInput = false, inputType = 'text', plac
 }
 
 function listenToFriends() {
-    // --- PARTIE DEMANDES D'AMIS ---
+    // --- 1. PARTIE DEMANDES D'AMIS ---
     onValue(ref(db, `requests/${myUser.uid}`), (snap) => {
         const reqs = snap.val();
         const container = document.getElementById('friends-requests');
@@ -524,6 +524,7 @@ function listenToFriends() {
                 div.style.flexDirection = "column";
                 div.style.alignItems = "stretch";
                 div.style.gap = "10px";
+                
                 div.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-weight:bold; color:#fff;">👤 ${r.from}</span>
@@ -538,39 +539,26 @@ function listenToFriends() {
         }
     });
 
-    // --- PARTIE LISTE D'AMIS ---
+    // --- 2. PARTIE LISTE D'AMIS (Harmonisée) ---
     onValue(ref(db, `friends/${myUser.uid}`), (snap) => {
         const friends = snap.val();
         const container = document.getElementById('friends-list');
         container.innerHTML = friends ? "<h4 style='color:#aaa; margin-top:20px; margin-bottom:10px;'>Tes Amis :</h4>" : "<p style='text-align:center; color:#666; margin-top:20px;'>Aucun ami pour le moment.</p>";
-        
         if (friends) {
             Object.keys(friends).forEach(fUid => {
                 const fName = friends[fUid].name;
-                const friendData = allUsers[fUid];
-                // Un ami est considéré en ligne si vu il y a moins de 5 min
-                const isOnline = friendData && (Date.now() - friendData.lastSeen < 300000);
-                
                 const div = document.createElement('div');
                 div.className = 'friend-item';
-                div.style.flexDirection = "column";
+                div.style.flexDirection = "column"; // On passe aussi en colonne pour les amis
                 div.style.alignItems = "stretch";
                 div.style.gap = "10px";
 
                 div.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:bold; color:#fff;">
-                            <span class="status-dot ${isOnline ? 'online' : 'offline'}"></span>
-                            ${fName}
-                        </span>
-                        <span style="font-size:0.7rem; color:${isOnline ? '#2ecc71' : '#666'}">${isOnline ? 'EN LIGNE' : 'HORS LIGNE'}</span>
+                        <span style="font-weight:bold; color:#fff;">👤 ${fName}</span>
                     </div>
                     <div style="display:flex; gap:8px;">
-                        <button style="flex:2; padding:10px; margin:0; background:${isOnline ? '#3498db' : '#555'}; font-size:0.8rem; font-weight:bold; border-radius:10px;" 
-                                ${!isOnline ? 'disabled' : ''} 
-                                onclick="initiateTrade('${fUid}', '${fName}')">
-                            ${isOnline ? '🤝 ÉCHANGER' : '🚫 HORS LIGNE'}
-                        </button>
+                        <button style="flex:2; padding:10px; margin:0; background:#3498db; font-size:0.8rem; font-weight:bold; border-radius:10px; box-shadow: 0 4px 10px rgba(52, 152, 219, 0.2);" onclick="initiateTrade('${fUid}', '${fName}')">🤝 ÉCHANGER</button>
                         <button style="flex:1; padding:10px; margin:0; background:#444; font-size:0.8rem; font-weight:bold; border-radius:10px;" onclick="removeFriend('${fUid}', '${fName}')">SUPPRIMER</button>
                     </div>`;
                 container.appendChild(div);
@@ -578,7 +566,6 @@ function listenToFriends() {
         }
     });
 }
-
 
 window.acceptFriend = async (fUid, fName) => {
     const updates = {};
@@ -598,48 +585,20 @@ window.refuseFriend = async (fUid) => {
 let currentTradeId = null;
 let tradeListener = null;
 
+// --- 1. ENVOYER UNE DEMANDE D'ÉCHANGE ---
 window.initiateTrade = async (partnerUid, partnerName) => {
-    // 1. Vérifier si le partenaire est en ligne via allUsers
-    const partnerData = allUsers[partnerUid];
-    const isOnline = partnerData && (Date.now() - partnerData.lastSeen < 300000);
-
-    if (!isOnline) {
-        showToast(`${partnerName} est hors ligne.`, "#e74c3c");
-        return;
-    }
-
-    // 2. Gestion du Cooldown (15 minutes)
-    const lastTradeKey = `lastTrade_${myUser.uid}_${partnerUid}`;
-    const lastTradeTime = localStorage.getItem(lastTradeKey);
-    const now = Date.now();
-    const cooldownMs = 15 * 60 * 1000; // 15 minutes en millisecondes
-
-    if (lastTradeTime && (now - lastTradeTime < cooldownMs)) {
-        const remainingMin = Math.ceil((cooldownMs - (now - lastTradeTime)) / 60000);
-        showToast(`Attends encore ${remainingMin} min avant de réinviter ${partnerName}.`, "#e67e22");
-        return;
-    }
-
-    // 3. Confirmation et envoi
     const confirmation = await customDialog({
         title: "🤝 Proposition d'échange",
         text: `Veux-tu envoyer une offre d'échange à ${partnerName} ?`
     });
 
     if (confirmation) {
-        try {
-            await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
-                from: myUser.username,
-                fromUid: myUser.uid,
-                timestamp: now
-            });
-            
-            // Enregistrer l'heure de l'envoi pour le cooldown
-            localStorage.setItem(lastTradeKey, now);
-            showToast("Demande d'échange envoyée !", "#2ecc71");
-        } catch (e) {
-            showToast("Erreur lors de l'envoi.", "#e74c3c");
-        }
+        await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
+            from: myUser.username,
+            fromUid: myUser.uid,
+            timestamp: Date.now()
+        });
+        showToast("Demande d'échange envoyée !", "#2ecc71");
     }
 };
 
@@ -843,6 +802,8 @@ function startGame() {
     startGPS();
     listenToFriends();
     listenToTradeRequests();
+    checkQuests();
+
 
     setTimeout(() => {
         offlineIncomeCheck();
@@ -1337,7 +1298,15 @@ function checkCurrentZoneContext() {
                 forSale: false,
                 price: 0
             };
+ 
+            // Si c'est un vol (zone déjà occupée)
+if (existingZone && existingZone.ownerId) {
+    updateQuestProgress('steal');
+}
+// Dans tous les cas, c'est une capture
+updateQuestProgress('capture');
 
+            
             await update(ref(db), updates);
             captureTimer = 0; 
         }
@@ -1366,7 +1335,9 @@ function checkCurrentZoneContext() {
             const updates = {};
             updates[`users/${myUser.uid}/coins`] = myUser.coins - cost;
             updates[`zones/${zoneId}/level`] = currentLevel + 1;
-            
+            updateQuestProgress('upgrade');
+
+                
             await update(ref(db), updates);
         }
 
@@ -1670,6 +1641,130 @@ function getProtectionStatus(zone) {
     }, 1500);
 });
 
+// --- INITIALISATION DES QUÊTES ---
+const questsBtn = document.getElementById('quests-toggle-btn');
+const questsScreen = document.getElementById('quests-screen');
+questsBtn.onclick = () => {
+    questsScreen.classList.remove('hidden');
+    renderQuests();
+};
+document.getElementById('close-quests').onclick = () => questsScreen.classList.add('hidden');
+
+// Fonction pour générer ou récupérer les quêtes
+async function checkQuests() {
+    const snap = await get(ref(db, `users/${myUser.uid}/quests`));
+    let userQuests = snap.val() || {};
+    const now = Date.now();
+    let needUpdate = false;
+
+    // Type 1: Capturer des zones (24h)
+    if (!userQuests.q1 || now > userQuests.q1.expiry) {
+        const target = Math.floor(Math.random() * 9) + 2; // 2 à 10
+        userQuests.q1 = { type: 'capture', target, current: 0, reward: target * 3, expiry: now + 86400000, label: `Conquérir ${target} zones` };
+        needUpdate = true;
+    }
+
+    // Type 2: Voler des zones (24h)
+    if (!userQuests.q2 || now > userQuests.q2.expiry) {
+        const target = Math.floor(Math.random() * 5) + 1; // 1 à 5
+        userQuests.q2 = { type: 'steal', target, current: 0, reward: target * 5, expiry: now + 86400000, label: `Voler ${target} zones à l'ennemi` };
+        needUpdate = true;
+    }
+
+    // Type 3: Améliorer une zone (48h)
+    if (!userQuests.q3 || now > userQuests.q3.expiry) {
+        userQuests.q3 = { type: 'upgrade', target: 1, current: 0, reward: 10, expiry: now + 172800000, label: "Améliorer 1 territoire" };
+        needUpdate = true;
+    }
+
+    if (needUpdate) await update(ref(db, `users/${myUser.uid}/quests`), userQuests);
+}
+
+async function renderQuests() {
+    await checkQuests(); // On s'assure que les quêtes existent
+    const snap = await get(ref(db, `users/${myUser.uid}/quests`));
+    const quests = snap.val();
+    const container = document.getElementById('quests-container');
+    
+    if (!quests) {
+        container.innerHTML = "<p style='text-align:center; color:#666;'>Génération des missions...</p>";
+        return;
+    }
+
+    container.innerHTML = ""; // On vide le container
+
+    Object.keys(quests).forEach(key => {
+        const q = quests[key];
+        const isDone = q.current >= q.target;
+        // Calcul du pourcentage pour la barre
+        const progressPercent = Math.min(100, (q.current / q.target) * 100);
+        
+        const card = document.createElement('div');
+        card.style.cssText = `
+            background: #1a1a1a; 
+            padding: 15px; 
+            border-radius: 12px; 
+            border: 1px solid ${isDone ? '#2ecc71' : '#333'}; 
+            margin-bottom: 10px;
+            transition: all 0.3s;
+        `;
+        
+        card.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span style="font-weight:bold; color: ${isDone ? '#2ecc71' : '#fff'};">
+                    ${isDone ? '✅' : '⚔️'} ${q.label}
+                </span>
+                <span style="color:#f1c40f; font-weight:bold;">+${q.reward}💰</span>
+            </div>
+
+            <div style="background:#000; height:12px; border-radius:6px; overflow:hidden; border: 1px solid #333;">
+                <div style="width:${progressPercent}%; background:${isDone ? '#2ecc71' : '#3498db'}; height:100%; transition: width 0.5s ease-out;"></div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#aaa; margin-top:8px;">
+                <span style="font-family: monospace;">Progression: [${q.current}/${q.target}]</span>
+                <span>${Math.floor(progressPercent)}%</span>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+
+async function updateQuestProgress(type) {
+    const snap = await get(ref(db, `users/${myUser.uid}/quests`));
+    if (!snap.exists()) return;
+    
+    const quests = snap.val();
+    let hasChanged = false;
+    
+    for (let key in quests) {
+        let q = quests[key];
+        // On vérifie si le type correspond et si la quête n'est pas déjà finie
+        if (q.type === type && q.current < q.target) {
+            q.current += 1;
+            hasChanged = true;
+
+            // Si elle vient de se terminer
+            if (q.current >= q.target) {
+                showToast(`🏆 Quête terminée : ${q.label} ! (+${q.reward}💰)`, "#2ecc71");
+                // On donne la récompense immédiatement en local pour l'UI
+                myUser.coins += q.reward; 
+                await update(ref(db, `users/${myUser.uid}`), { coins: myUser.coins });
+            }
+        }
+    }
+
+    if (hasChanged) {
+        await update(ref(db, `users/${myUser.uid}/quests`), quests);
+        // Si le menu des quêtes est ouvert, on le rafraîchit
+        if (!document.getElementById('quests-screen').classList.contains('hidden')) {
+            renderQuests();
+        }
+    }
+}
+
+    
     
         function updateZoneColors() {
             if(Object.keys(zoneRectangles).length > 0) renderZonesMap();
@@ -1677,10 +1772,55 @@ function getProtectionStatus(zone) {
     </script>
     
     <button id="debug-btn" title="Debug / Refresh">​👾</button>
-
+    
     <button id="shop-toggle-btn" title="Marché Mondial">🛒</button>
 
+    <button id="quests-toggle-btn" title="Quêtes">📜</button>
+
+<div id="quests-screen" class="screen hidden" style="z-index: 3300;">
+    <div class="panel" style="width: 95%; max-width: 400px; height: 80vh; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h2 style="margin:0; font-size: 1.2rem;">Objectifs de Guerre</h2>
+            <button id="close-quests" style="width: auto; padding: 10px; margin: 0; background: #e74c3c;">✕</button>
+        </div>
+        <div id="quests-container" style="flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 15px;">
+            </div>
+    </div>
+</div>
+
 <style>
+#quests-toggle-btn {
+    position: fixed; /* Utilise fixed pour être sûr qu'il reste à l'écran */
+    top: 150px;      /* Aligné horizontalement avec le shop (à droite) */
+    left: 20px; 
+    z-index: 1500 !important; /* Force le passage au-dessus de Leaflet */
+    
+    /* Pour un rond parfait, width = height et padding à 0 */
+    width: 45px !important; 
+    height: 45px !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    border-radius: 50% !important;
+    
+    background: rgba(44, 62, 80, 0.9); 
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    
+    display: flex; 
+    justify-content: center; 
+    align-items: center;
+    cursor: pointer;
+    font-size: 1.2rem;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    backdrop-filter: blur(5px);
+    transition: all 0.2s;
+}
+
+#quests-toggle-btn:active {
+    transform: scale(0.9);
+}
+
+    
 #shop-toggle-btn {
     position: absolute;
     top: 180px;
@@ -1741,24 +1881,6 @@ function getProtectionStatus(zone) {
 .plan-info .plan-name { display: block; font-weight: bold; color: #fff; }
 .plan-info .plan-duration { font-size: 0.8rem; color: #aaa; }
 .plan-price { color: #f1c40f; font-weight: bold; }
-       
-/* Permettre le scroll dans la liste d'amis */
-#friends-list {
-    max-height: 400px; /* Ou la hauteur que tu préfères */
-    overflow-y: auto;
-    padding-right: 5px;
-}
-
-/* Style de l'indicateur de statut */
-.status-dot {
-    height: 10px;
-    width: 10px;
-    border-radius: 50%;
-    display: inline-block;
-    margin-right: 5px;
-}
-.online { background-color: #2ecc71; box-shadow: 0 0 5px #2ecc71; }
-.offline { background-color: #95a5a6; }
     
     
 </style>
