@@ -648,13 +648,11 @@ function listenToTradeRequests() {
 }
 
 
-// --- 3. L'INTERFACE D'ÉCHANGE AMÉLIORÉE ---
 function openTradeScreen(tradeId, partnerName) {
     currentTradeId = tradeId;
     document.getElementById('trade-partner-name').innerText = partnerName;
     document.getElementById('trade-screen').classList.remove('hidden');
     
-    // Remplir le sélecteur de zones avec style
     const zoneSelect = document.getElementById('trade-my-zone');
     zoneSelect.innerHTML = '<option value="">-- Aucune Zone --</option>';
     Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid).forEach(id => {
@@ -662,12 +660,11 @@ function openTradeScreen(tradeId, partnerName) {
         zoneSelect.innerHTML += `<option value="${id}">🚩 Zone ${id} (Niv.${z.level || 1})</option>`;
     });
 
-    // Écouteur temps réel de l'échange
-    if (tradeListener) tradeListener(); // Nettoyer l'ancien
+    if (tradeListener) tradeListener();
     tradeListener = onValue(ref(db, `trades/${tradeId}`), (snap) => {
         const data = snap.val();
         if (!data) {
-            closeTrade(); // Si l'autre annule (session supprimée)
+            closeTrade();
             return;
         }
 
@@ -675,12 +672,29 @@ function openTradeScreen(tradeId, partnerName) {
         const me = data[myUser.uid];
         const them = data[partnerUid];
 
-        // Update UI Partenaire
+        // Mise à jour de l'UI du partenaire
         document.getElementById('partner-offer').innerHTML = `
             <div style="color:#f1c40f">💰 ${them.coins || 0} pièces</div>
             <div style="color:#3498db">🚩 ${them.zoneId ? 'Zone '+them.zoneId : 'Aucune'}</div>
-            <div style="margin-top:10px">${them.ready ? '✅ PRÊT' : '⏳ RÉFLÉCHIT...'}</div>
+            <div style="margin-top:10px; color:${them.ready ? '#2ecc71' : '#e67e22'}">${them.ready ? '✅ PRÊT' : '⏳ RÉFLÉCHIT...'}</div>
         `;
+
+        // Gestion du bouton de validation
+        const acceptBtn = document.getElementById('accept-trade');
+        if (me.ready) {
+            acceptBtn.innerText = "OFFRE VERROUILLÉE";
+            acceptBtn.style.background = "#95a5a6";
+            acceptBtn.style.cursor = "not-allowed";
+            acceptBtn.onclick = null; // Désactivé une fois prêt
+        } else {
+            acceptBtn.innerText = "VALIDER";
+            acceptBtn.style.background = "#2ecc71";
+            acceptBtn.style.cursor = "pointer";
+            acceptBtn.onclick = async () => {
+                await update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { ready: true });
+                showToast("Offre verrouillée. En attente du partenaire...", "#2ecc71");
+            };
+        }
 
         if (me.ready && them.ready) {
             startTradeCountdown(tradeId);
@@ -689,6 +703,7 @@ function openTradeScreen(tradeId, partnerName) {
         }
     });
 }
+
 
 // --- 4. ANNULATION ET SUPPRESSION D'AMI ---
 document.getElementById('cancel-trade').onclick = async () => {
@@ -1271,45 +1286,59 @@ function checkCurrentZoneContext() {
 }
 
 
-        async function captureZone(zoneId, existingZone) {
-            document.getElementById('capture-text').innerText = "CAPTURE RÉUSSIE !";
-            
-            const updates = {};
-            
-            if (existingZone && existingZone.ownerId) {
-                const oldOwnerRef = ref(db, `users/${existingZone.ownerId}/zonesCount`);
-                runTransaction(oldOwnerRef, (currentCount) => (currentCount || 0) - 1);
-            }
+async function captureZone(zoneId, existingZone) {
+    document.getElementById('capture-text').innerText = "CAPTURE RÉUSSIE !";
+    
+    // 1. Détecter le type d'action AVANT de modifier la DB
+    const isSteal = (existingZone && existingZone.ownerId && existingZone.ownerId !== myUser.uid);
 
-            let newTotal = (myUser.totalCaptured || 0) + 1;
-            let coinsGained = 0;
-            if (newTotal % 10 === 0) {
-                coinsGained = 15;
-                 showToast("Bonus de conquête ! +15 pièces !", "#e74c3c");
-            }
+    const updates = {};
+    
+    // Gérer l'ancien propriétaire s'il y en a un
+    if (existingZone && existingZone.ownerId) {
+        const oldOwnerRef = ref(db, `users/${existingZone.ownerId}/zonesCount`);
+        runTransaction(oldOwnerRef, (currentCount) => (currentCount || 0) - 1);
+    }
 
-            updates[`users/${myUser.uid}/totalCaptured`] = newTotal;
-            updates[`users/${myUser.uid}/zonesCount`] = (myUser.zonesCount || 0) + 1;
-            if (coinsGained > 0) updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + coinsGained;
+    // Calculer les récompenses de palier
+    let newTotal = (myUser.totalCaptured || 0) + 1;
+    let coinsGained = 0;
+    if (newTotal % 10 === 0) {
+        coinsGained = 15;
+        showToast("Bonus de conquête ! +15 pièces !", "#f1c40f");
+    }
 
-            updates[`zones/${zoneId}`] = {
-                ownerId: myUser.uid,
-                level: existingZone ? existingZone.level : 1,
-                forSale: false,
-                price: 0
-            };
- 
-            // Si c'est un vol (zone déjà occupée)
-if (existingZone && existingZone.ownerId) {
-    updateQuestProgress('steal');
+    // Préparer les updates de l'utilisateur
+    updates[`users/${myUser.uid}/totalCaptured`] = newTotal;
+    updates[`users/${myUser.uid}/zonesCount`] = (myUser.zonesCount || 0) + 1;
+    if (coinsGained > 0) {
+        updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + coinsGained;
+    }
+
+    // Update de la zone
+    updates[`zones/${zoneId}`] = {
+        ownerId: myUser.uid,
+        level: existingZone ? (existingZone.level || 1) : 1,
+        forSale: false,
+        price: 0,
+        protectionExpiry: 0 // On retire la protection si elle est volée
+    };
+
+    // 2. Envoyer les mises à jour
+    await update(ref(db), updates);
+
+    // 3. Mettre à jour la progression des quêtes
+    if (isSteal) {
+        console.log("Action: VOL");
+        updateQuestProgress('steal');
+    } else {
+        console.log("Action: CAPTURE SIMPLE");
+        updateQuestProgress('capture');
+    }
+    
+    captureTimer = 0; 
 }
-// Dans tous les cas, c'est une capture
-updateQuestProgress('capture');
 
-            
-            await update(ref(db), updates);
-            captureTimer = 0; 
-        }
 
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371; 
@@ -1909,23 +1938,24 @@ async function updateQuestProgress(type) {
 <button id="friends-toggle-btn" title="Amis">👥</button>
 
 <div id="friends-screen" class="screen hidden" style="z-index: 3100;">
-    <div class="panel" style="width: 95%; max-width: 400px; height: 80vh;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+    <div class="panel" style="width: 95%; max-width: 400px; height: 85vh; display: flex; flex-direction: column; padding: 15px; box-sizing: border-box;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
             <h2 style="margin:0; font-size: 1.2rem;">Réseau</h2>
             <button id="close-friends" style="width: auto; padding: 10px; margin: 0; background: #e74c3c;">✕</button>
         </div>
         
-        <div id="friends-requests" style="max-height: 100px; overflow-y: auto;"></div>
-        
-        <div id="friends-list" style="flex-grow: 1; overflow-y: auto; margin-top: 10px; border-top: 1px solid #333;">
-            </div>
+        <div style="flex-grow: 1; overflow-y: auto; padding-right: 5px;">
+            <div id="friends-requests"></div>
+            <div id="friends-list"></div>
+        </div>
 
-        <div style="background: #222; padding: 10px; border-radius: 10px; margin-top: 10px;">
-            <input type="text" id="add-friend-uid" placeholder="Entrer un pseudo..." style="width:100%; box-sizing: border-box; margin-bottom: 5px;">
-            <button id="send-friend-req" style="width:100%; margin:0;">AJOUTER</button>
+        <div style="background: #222; padding: 15px; border-radius: 15px; margin-top: 10px; border: 1px solid #444; flex-shrink: 0;">
+            <input type="text" id="add-friend-uid" placeholder="Pseudo exact de l'ami..." style="width:100%; box-sizing: border-box; margin-bottom: 10px; background: #000; border: 1px solid #555; color: white;">
+            <button id="send-friend-req" style="width:100%; margin:0; height: 45px;">AJOUTER UN AMI</button>
         </div>
     </div>
 </div>
+
 
 <div id="trade-screen" class="screen hidden" style="z-index: 3200;">
     <div class="panel" style="width: 95%; max-width: 450px; border: 2px solid #f1c40f;">
