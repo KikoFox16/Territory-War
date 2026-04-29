@@ -511,7 +511,7 @@ function customDialog({ title, text, showInput = false, inputType = 'text', plac
 }
 
 function listenToFriends() {
-    // --- 1. PARTIE DEMANDES D'AMIS ---
+    // --- PARTIE DEMANDES D'AMIS ---
     onValue(ref(db, `requests/${myUser.uid}`), (snap) => {
         const reqs = snap.val();
         const container = document.getElementById('friends-requests');
@@ -524,7 +524,6 @@ function listenToFriends() {
                 div.style.flexDirection = "column";
                 div.style.alignItems = "stretch";
                 div.style.gap = "10px";
-                
                 div.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-weight:bold; color:#fff;">👤 ${r.from}</span>
@@ -539,26 +538,39 @@ function listenToFriends() {
         }
     });
 
-    // --- 2. PARTIE LISTE D'AMIS (Harmonisée) ---
+    // --- PARTIE LISTE D'AMIS ---
     onValue(ref(db, `friends/${myUser.uid}`), (snap) => {
         const friends = snap.val();
         const container = document.getElementById('friends-list');
         container.innerHTML = friends ? "<h4 style='color:#aaa; margin-top:20px; margin-bottom:10px;'>Tes Amis :</h4>" : "<p style='text-align:center; color:#666; margin-top:20px;'>Aucun ami pour le moment.</p>";
+        
         if (friends) {
             Object.keys(friends).forEach(fUid => {
                 const fName = friends[fUid].name;
+                const friendData = allUsers[fUid];
+                // Un ami est considéré en ligne si vu il y a moins de 5 min
+                const isOnline = friendData && (Date.now() - friendData.lastSeen < 300000);
+                
                 const div = document.createElement('div');
                 div.className = 'friend-item';
-                div.style.flexDirection = "column"; // On passe aussi en colonne pour les amis
+                div.style.flexDirection = "column";
                 div.style.alignItems = "stretch";
                 div.style.gap = "10px";
 
                 div.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:bold; color:#fff;">👤 ${fName}</span>
+                        <span style="font-weight:bold; color:#fff;">
+                            <span class="status-dot ${isOnline ? 'online' : 'offline'}"></span>
+                            ${fName}
+                        </span>
+                        <span style="font-size:0.7rem; color:${isOnline ? '#2ecc71' : '#666'}">${isOnline ? 'EN LIGNE' : 'HORS LIGNE'}</span>
                     </div>
                     <div style="display:flex; gap:8px;">
-                        <button style="flex:2; padding:10px; margin:0; background:#3498db; font-size:0.8rem; font-weight:bold; border-radius:10px; box-shadow: 0 4px 10px rgba(52, 152, 219, 0.2);" onclick="initiateTrade('${fUid}', '${fName}')">🤝 ÉCHANGER</button>
+                        <button style="flex:2; padding:10px; margin:0; background:${isOnline ? '#3498db' : '#555'}; font-size:0.8rem; font-weight:bold; border-radius:10px;" 
+                                ${!isOnline ? 'disabled' : ''} 
+                                onclick="initiateTrade('${fUid}', '${fName}')">
+                            ${isOnline ? '🤝 ÉCHANGER' : '🚫 HORS LIGNE'}
+                        </button>
                         <button style="flex:1; padding:10px; margin:0; background:#444; font-size:0.8rem; font-weight:bold; border-radius:10px;" onclick="removeFriend('${fUid}', '${fName}')">SUPPRIMER</button>
                     </div>`;
                 container.appendChild(div);
@@ -566,6 +578,7 @@ function listenToFriends() {
         }
     });
 }
+
 
 window.acceptFriend = async (fUid, fName) => {
     const updates = {};
@@ -585,20 +598,48 @@ window.refuseFriend = async (fUid) => {
 let currentTradeId = null;
 let tradeListener = null;
 
-// --- 1. ENVOYER UNE DEMANDE D'ÉCHANGE ---
 window.initiateTrade = async (partnerUid, partnerName) => {
+    // 1. Vérifier si le partenaire est en ligne via allUsers
+    const partnerData = allUsers[partnerUid];
+    const isOnline = partnerData && (Date.now() - partnerData.lastSeen < 300000);
+
+    if (!isOnline) {
+        showToast(`${partnerName} est hors ligne.`, "#e74c3c");
+        return;
+    }
+
+    // 2. Gestion du Cooldown (15 minutes)
+    const lastTradeKey = `lastTrade_${myUser.uid}_${partnerUid}`;
+    const lastTradeTime = localStorage.getItem(lastTradeKey);
+    const now = Date.now();
+    const cooldownMs = 15 * 60 * 1000; // 15 minutes en millisecondes
+
+    if (lastTradeTime && (now - lastTradeTime < cooldownMs)) {
+        const remainingMin = Math.ceil((cooldownMs - (now - lastTradeTime)) / 60000);
+        showToast(`Attends encore ${remainingMin} min avant de réinviter ${partnerName}.`, "#e67e22");
+        return;
+    }
+
+    // 3. Confirmation et envoi
     const confirmation = await customDialog({
         title: "🤝 Proposition d'échange",
         text: `Veux-tu envoyer une offre d'échange à ${partnerName} ?`
     });
 
     if (confirmation) {
-        await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
-            from: myUser.username,
-            fromUid: myUser.uid,
-            timestamp: Date.now()
-        });
-        showToast("Demande d'échange envoyée !", "#2ecc71");
+        try {
+            await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
+                from: myUser.username,
+                fromUid: myUser.uid,
+                timestamp: now
+            });
+            
+            // Enregistrer l'heure de l'envoi pour le cooldown
+            localStorage.setItem(lastTradeKey, now);
+            showToast("Demande d'échange envoyée !", "#2ecc71");
+        } catch (e) {
+            showToast("Erreur lors de l'envoi.", "#e74c3c");
+        }
     }
 };
 
@@ -1700,6 +1741,24 @@ function getProtectionStatus(zone) {
 .plan-info .plan-name { display: block; font-weight: bold; color: #fff; }
 .plan-info .plan-duration { font-size: 0.8rem; color: #aaa; }
 .plan-price { color: #f1c40f; font-weight: bold; }
+       
+/* Permettre le scroll dans la liste d'amis */
+#friends-list {
+    max-height: 400px; /* Ou la hauteur que tu préfères */
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
+/* Style de l'indicateur de statut */
+.status-dot {
+    height: 10px;
+    width: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+.online { background-color: #2ecc71; box-shadow: 0 0 5px #2ecc71; }
+.offline { background-color: #95a5a6; }
     
     
 </style>
