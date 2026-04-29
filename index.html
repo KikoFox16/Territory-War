@@ -639,18 +639,14 @@ window.initiateTrade = async (partnerUid, partnerName) => {
     }
 };
 
-
-
-// --- 2. ÉCOUTER LES DEMANDES D'ÉCHANGE (À mettre dans listenToFriends) ---
 function listenToTradeRequests() {
+    // Écouter les nouvelles demandes entrantes
     onValue(ref(db, `tradeRequests/${myUser.uid}`), (snap) => {
         const reqs = snap.val();
         if (!reqs) return;
         
         Object.keys(reqs).forEach(async (fromUid) => {
             const r = reqs[fromUid];
-            
-            // Remplace confirm par customDialog
             const accept = await customDialog({
                 title: "🤝 Demande d'échange",
                 text: `${r.from} souhaite commercer avec toi !`
@@ -671,27 +667,28 @@ function listenToTradeRequests() {
         });
     });
 
-    // Écouter si une session est créée pour nous
+    // CRUCIAL : Détecter si on est déjà dans un trade (même après refresh)
     onValue(ref(db, `trades`), (snap) => {
         const allTrades = snap.val();
-        if (!allTrades) return;
+        if (!allTrades || currentTradeId) return; // Si déjà ouvert, on ne fait rien
+
         Object.keys(allTrades).forEach(tId => {
-            if (tId.includes(myUser.uid) && !currentTradeId) {
-                const partnerUid = tId.replace(myUser.uid, "").replace("_", "");
-                const partnerName = allUsers[partnerUid]?.username || "Ami";
+            if (tId.includes(myUser.uid)) {
+                const partnerUid = tId.split('_').find(id => id !== myUser.uid);
+                const partnerName = allUsers[partnerUid]?.username || "Partenaire";
                 openTradeScreen(tId, partnerName);
             }
         });
     });
 }
 
-
 function openTradeScreen(tradeId, partnerName) {
+    if (currentTradeId === tradeId) return; // Évite les boucles
     currentTradeId = tradeId;
+    
     document.getElementById('trade-partner-name').innerText = partnerName;
     document.getElementById('trade-screen').classList.remove('hidden');
     
-    // Remplir la liste de mes zones
     const zoneSelect = document.getElementById('trade-my-zone');
     zoneSelect.innerHTML = '<option value="">-- Aucune Zone --</option>';
     Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid).forEach(id => {
@@ -703,72 +700,69 @@ function openTradeScreen(tradeId, partnerName) {
 
     tradeListener = onValue(ref(db, `trades/${tradeId}`), (snap) => {
         const data = snap.val();
+        
+        // Si le trade est supprimé par l'autre ou fini
         if (!data) {
             closeTrade();
             return;
         }
 
-        // On extrait l'ID du partenaire proprement
         const partnerUid = tradeId.split('_').find(id => id !== myUser.uid);
+        
+        // Sécurité : Si les nœuds joueurs n'existent pas encore, on crée un objet vide
         const me = data[myUser.uid] || { coins: 0, zoneId: "", ready: false };
         const them = data[partnerUid] || { coins: 0, zoneId: "", ready: false };
 
-        // Mise à jour de l'affichage de l'offre adverse
         const partnerOfferDiv = document.getElementById('partner-offer');
-        
-        // Sécurité : on vérifie si them existe pour éviter le chargement infini
-        if (them) {
-            partnerOfferDiv.innerHTML = `
-                <div style="color:#f1c40f; font-size:1.1rem;">💰 ${them.coins || 0} pièces</div>
-                <div style="color:#3498db; font-size:1.1rem;">🚩 ${them.zoneId ? 'Zone ' + them.zoneId : 'Aucune zone'}</div>
-                <div style="margin-top:10px; color:${them.ready ? '#2ecc71' : '#e67e22'}; font-weight:bold;">
-                    ${them.ready ? '✅ L\'OFFRE EST PRÊTE' : '⏳ EN TRAIN DE CHOISIR...'}
-                </div>
-            `;
-        } else {
-            partnerOfferDiv.innerHTML = "En attente des données...";
-        }
+        partnerOfferDiv.innerHTML = `
+            <div style="color:#f1c40f; font-size:1.1rem;">💰 ${them.coins || 0} pièces</div>
+            <div style="color:#3498db; font-size:1.1rem;">🚩 ${them.zoneId ? 'Zone ' + them.zoneId : 'Aucune zone'}</div>
+            <div style="margin-top:10px; color:${them.ready ? '#2ecc71' : '#e67e22'}; font-weight:bold;">
+                ${them.ready ? '✅ PRÊT' : '⏳ RÉFLÉCHIT...'}
+            </div>
+        `;
 
-        // Gestion du bouton Valider
         const acceptBtn = document.getElementById('accept-trade');
         if (me.ready) {
             acceptBtn.innerText = "OFFRE VERROUILLÉE";
             acceptBtn.style.background = "#555";
-            acceptBtn.style.cursor = "not-allowed";
             acceptBtn.disabled = true;
             acceptBtn.onclick = null;
         } else {
             acceptBtn.innerText = "VALIDER MON OFFRE";
             acceptBtn.style.background = "#2ecc71";
-            acceptBtn.style.cursor = "pointer";
             acceptBtn.disabled = false;
             acceptBtn.onclick = async () => {
                 await update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { ready: true });
-                showToast("Ton offre est validée !", "#2ecc71");
             };
         }
 
-        // Lancement du compte à rebours si les deux sont prêts
         if (me.ready && them.ready) {
             startTradeCountdown(tradeId);
         } else {
             stopTradeCountdown();
         }
-    }, (error) => {
-        console.error("Erreur Trade:", error);
-        partnerOfferDiv.innerHTML = "Erreur de connexion...";
     });
 }
 
 
-
-// --- 4. ANNULATION ET SUPPRESSION D'AMI ---
 document.getElementById('cancel-trade').onclick = async () => {
     if (currentTradeId) {
+        // On supprime la session pour tout le monde
         await set(ref(db, `trades/${currentTradeId}`), null);
         closeTrade();
     }
 };
+
+function closeTrade() {
+    if (tradeListener) tradeListener(); // Arrête l'écoute Firebase
+    tradeListener = null;
+    currentTradeId = null;
+    document.getElementById('trade-screen').classList.add('hidden');
+    document.getElementById('trade-status').innerText = "";
+    stopTradeCountdown();
+}
+
 
 let tradeCountdownInterval = null;
 
@@ -800,22 +794,6 @@ function stopTradeCountdown() {
     }
 }
     
-    
-function closeTrade() {
-    // On arrête d'écouter les changements en base de données
-    if (tradeListener) {
-        const tradeRef = ref(db, `trades/${currentTradeId}`);
-        // Note: l'appel à tradeListener() sans arguments suffit si c'est le retour d'onValue
-        tradeListener(); 
-        tradeListener = null;
-    }
-    
-    currentTradeId = null;
-    document.getElementById('trade-screen').classList.add('hidden');
-    document.getElementById('trade-status').innerText = "";
-    stopTradeCountdown();
-}
-
 
 window.removeFriend = async (fUid, fName) => {
     // On utilise ta modale personnalisée
@@ -2072,4 +2050,4 @@ async function updateQuestProgress(type) {
     
     
 </body>
-</html>
+    </html>
