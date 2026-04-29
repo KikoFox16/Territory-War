@@ -521,9 +521,7 @@ function listenToFriends() {
                 const r = reqs[fromUid];
                 const div = document.createElement('div');
                 div.className = 'friend-item';
-                div.style.flexDirection = "column";
-                div.style.alignItems = "stretch";
-                div.style.gap = "10px";
+                div.style.cssText = "flex-direction: column; align-items: stretch; gap: 10px; display: flex; padding: 12px; background: #1a1a1a; margin-bottom: 8px; border-radius: 15px; border: 1px solid #333;";
                 
                 div.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -539,33 +537,45 @@ function listenToFriends() {
         }
     });
 
-    // --- 2. PARTIE LISTE D'AMIS (Harmonisée) ---
+    // --- 2. PARTIE LISTE D'AMIS (Statut + Restriction Échange) ---
     onValue(ref(db, `friends/${myUser.uid}`), (snap) => {
         const friends = snap.val();
         const container = document.getElementById('friends-list');
         container.innerHTML = friends ? "<h4 style='color:#aaa; margin-top:20px; margin-bottom:10px;'>Tes Amis :</h4>" : "<p style='text-align:center; color:#666; margin-top:20px;'>Aucun ami pour le moment.</p>";
+        
         if (friends) {
             Object.keys(friends).forEach(fUid => {
-                const fName = friends[fUid].name;
+                const fData = friends[fUid];
+                const userInAll = allUsers[fUid];
+                
+                // Vérification du statut en ligne (5 minutes)
+                const isOnline = userInAll && (Date.now() - userInAll.lastSeen < 300000);
+                const statusColor = isOnline ? '#2ecc71' : '#e74c3c';
+                const statusText = isOnline ? 'EN LIGNE' : 'HORS LIGNE';
+
                 const div = document.createElement('div');
                 div.className = 'friend-item';
-                div.style.flexDirection = "column"; // On passe aussi en colonne pour les amis
-                div.style.alignItems = "stretch";
-                div.style.gap = "10px";
+                div.style.cssText = "flex-direction: column; align-items: stretch; gap: 10px; display: flex; padding: 12px; background: #1a1a1a; margin-bottom: 8px; border-radius: 15px; border: 1px solid #333;";
 
                 div.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:bold; color:#fff;">👤 ${fName}</span>
+                        <span style="font-weight:bold; color:#fff;">👤 ${fData.name}</span>
+                        <span style="font-size:0.65rem; font-weight:bold; color:${statusColor}; border:1px solid ${statusColor}; padding:2px 6px; border-radius:4px;">${statusText}</span>
                     </div>
                     <div style="display:flex; gap:8px;">
-                        <button style="flex:2; padding:10px; margin:0; background:#3498db; font-size:0.8rem; font-weight:bold; border-radius:10px; box-shadow: 0 4px 10px rgba(52, 152, 219, 0.2);" onclick="initiateTrade('${fUid}', '${fName}')">🤝 ÉCHANGER</button>
-                        <button style="flex:1; padding:10px; margin:0; background:#444; font-size:0.8rem; font-weight:bold; border-radius:10px;" onclick="removeFriend('${fUid}', '${fName}')">SUPPRIMER</button>
+                        <button style="flex:2; padding:10px; margin:0; background:${isOnline ? '#3498db' : '#555'}; font-size:0.8rem; font-weight:bold; border-radius:10px;" 
+                                ${!isOnline ? 'disabled' : ''} 
+                                onclick="initiateTrade('${fUid}', '${fData.name}')">
+                            ${isOnline ? '🤝 ÉCHANGER' : '🚫 HORS LIGNE'}
+                        </button>
+                        <button style="flex:1; padding:10px; margin:0; background:#444; font-size:0.8rem; font-weight:bold; border-radius:10px;" onclick="removeFriend('${fUid}', '${fData.name}')">SUPPRIMER</button>
                     </div>`;
                 container.appendChild(div);
             });
         }
     });
 }
+
 
 window.acceptFriend = async (fUid, fName) => {
     const updates = {};
@@ -587,20 +597,48 @@ let tradeListener = null;
 
 // --- 1. ENVOYER UNE DEMANDE D'ÉCHANGE ---
 window.initiateTrade = async (partnerUid, partnerName) => {
+    // 1. Vérification si en ligne via allUsers
+    const partner = allUsers[partnerUid];
+    const isOnline = partner && (Date.now() - partner.lastSeen < 3000);
+    
+    if (!isOnline) {
+        showToast(`${partnerName} est hors ligne !`, "#e74c3c");
+        return;
+    }
+
+    // 2. Vérification du délai de 20 minutes (via localStorage)
+    const lastTradeKey = `last_trade_${myUser.uid}_${partnerUid}`;
+    const lastTradeTime = localStorage.getItem(lastTradeKey);
+    const now = Date.now();
+    const cooldown = 20 * 60 * 1000; // 20 minutes en ms
+
+    if (lastTradeTime && (now - lastTradeTime < cooldown)) {
+        const remainingMin = Math.ceil((cooldown - (now - lastTradeTime)) / 60000);
+        showToast(`Attends encore ${remainingMin} min avant de solliciter ${partnerName}.`, "#f1c40f");
+        return;
+    }
+
     const confirmation = await customDialog({
         title: "🤝 Proposition d'échange",
         text: `Veux-tu envoyer une offre d'échange à ${partnerName} ?`
     });
 
     if (confirmation) {
-        await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
-            from: myUser.username,
-            fromUid: myUser.uid,
-            timestamp: Date.now()
-        });
-        showToast("Demande d'échange envoyée !", "#2ecc71");
+        try {
+            await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
+                from: myUser.username,
+                fromUid: myUser.uid,
+                timestamp: now
+            });
+            // Enregistre le temps de l'envoi
+            localStorage.setItem(lastTradeKey, now);
+            showToast("Demande d'échange envoyée !", "#2ecc71");
+        } catch (e) {
+            showToast("Erreur lors de l'envoi.", "#e74c3c");
+        }
     }
 };
+
 
 
 // --- 2. ÉCOUTER LES DEMANDES D'ÉCHANGE (À mettre dans listenToFriends) ---
@@ -988,7 +1026,7 @@ map.on('click', () => {
             });
         }
 
-        function startGPS() {
+function startGPS() {
             if (!navigator.geolocation) return  showToast("GPS non supporté.", "#e74c3c");
             watchId = navigator.geolocation.watchPosition(
     (pos) => {
@@ -2006,4 +2044,4 @@ async function updateQuestProgress(type) {
     
     
 </body>
-</html>
+            </html>
