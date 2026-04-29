@@ -691,6 +691,7 @@ function openTradeScreen(tradeId, partnerName) {
     document.getElementById('trade-partner-name').innerText = partnerName;
     document.getElementById('trade-screen').classList.remove('hidden');
     
+    // Remplir la liste de mes zones
     const zoneSelect = document.getElementById('trade-my-zone');
     zoneSelect.innerHTML = '<option value="">-- Aucune Zone --</option>';
     Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid).forEach(id => {
@@ -698,7 +699,8 @@ function openTradeScreen(tradeId, partnerName) {
         zoneSelect.innerHTML += `<option value="${id}">🚩 Zone ${id} (Niv.${z.level || 1})</option>`;
     });
 
-    if (tradeListener) tradeListener();
+    if (tradeListener) tradeListener(); 
+
     tradeListener = onValue(ref(db, `trades/${tradeId}`), (snap) => {
         const data = snap.val();
         if (!data) {
@@ -706,41 +708,58 @@ function openTradeScreen(tradeId, partnerName) {
             return;
         }
 
-        const partnerUid = tradeId.replace(myUser.uid, "").replace("_", "");
-        const me = data[myUser.uid];
-        const them = data[partnerUid];
+        // On extrait l'ID du partenaire proprement
+        const partnerUid = tradeId.split('_').find(id => id !== myUser.uid);
+        const me = data[myUser.uid] || { coins: 0, zoneId: "", ready: false };
+        const them = data[partnerUid] || { coins: 0, zoneId: "", ready: false };
 
-        // Mise à jour de l'UI du partenaire
-        document.getElementById('partner-offer').innerHTML = `
-            <div style="color:#f1c40f">💰 ${them.coins || 0} pièces</div>
-            <div style="color:#3498db">🚩 ${them.zoneId ? 'Zone '+them.zoneId : 'Aucune'}</div>
-            <div style="margin-top:10px; color:${them.ready ? '#2ecc71' : '#e67e22'}">${them.ready ? '✅ PRÊT' : '⏳ RÉFLÉCHIT...'}</div>
-        `;
+        // Mise à jour de l'affichage de l'offre adverse
+        const partnerOfferDiv = document.getElementById('partner-offer');
+        
+        // Sécurité : on vérifie si them existe pour éviter le chargement infini
+        if (them) {
+            partnerOfferDiv.innerHTML = `
+                <div style="color:#f1c40f; font-size:1.1rem;">💰 ${them.coins || 0} pièces</div>
+                <div style="color:#3498db; font-size:1.1rem;">🚩 ${them.zoneId ? 'Zone ' + them.zoneId : 'Aucune zone'}</div>
+                <div style="margin-top:10px; color:${them.ready ? '#2ecc71' : '#e67e22'}; font-weight:bold;">
+                    ${them.ready ? '✅ L\'OFFRE EST PRÊTE' : '⏳ EN TRAIN DE CHOISIR...'}
+                </div>
+            `;
+        } else {
+            partnerOfferDiv.innerHTML = "En attente des données...";
+        }
 
-        // Gestion du bouton de validation
+        // Gestion du bouton Valider
         const acceptBtn = document.getElementById('accept-trade');
         if (me.ready) {
             acceptBtn.innerText = "OFFRE VERROUILLÉE";
-            acceptBtn.style.background = "#95a5a6";
+            acceptBtn.style.background = "#555";
             acceptBtn.style.cursor = "not-allowed";
-            acceptBtn.onclick = null; // Désactivé une fois prêt
+            acceptBtn.disabled = true;
+            acceptBtn.onclick = null;
         } else {
-            acceptBtn.innerText = "VALIDER";
+            acceptBtn.innerText = "VALIDER MON OFFRE";
             acceptBtn.style.background = "#2ecc71";
             acceptBtn.style.cursor = "pointer";
+            acceptBtn.disabled = false;
             acceptBtn.onclick = async () => {
                 await update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { ready: true });
-                showToast("Offre verrouillée. En attente du partenaire...", "#2ecc71");
+                showToast("Ton offre est validée !", "#2ecc71");
             };
         }
 
+        // Lancement du compte à rebours si les deux sont prêts
         if (me.ready && them.ready) {
             startTradeCountdown(tradeId);
         } else {
             stopTradeCountdown();
         }
+    }, (error) => {
+        console.error("Erreur Trade:", error);
+        partnerOfferDiv.innerHTML = "Erreur de connexion...";
     });
 }
+
 
 
 // --- 4. ANNULATION ET SUPPRESSION D'AMI ---
@@ -783,11 +802,20 @@ function stopTradeCountdown() {
     
     
 function closeTrade() {
+    // On arrête d'écouter les changements en base de données
+    if (tradeListener) {
+        const tradeRef = ref(db, `trades/${currentTradeId}`);
+        // Note: l'appel à tradeListener() sans arguments suffit si c'est le retour d'onValue
+        tradeListener(); 
+        tradeListener = null;
+    }
+    
     currentTradeId = null;
     document.getElementById('trade-screen').classList.add('hidden');
     document.getElementById('trade-status').innerText = "";
-    if (tradeListener) tradeListener();
+    stopTradeCountdown();
 }
+
 
 window.removeFriend = async (fUid, fName) => {
     // On utilise ta modale personnalisée
@@ -2044,4 +2072,4 @@ async function updateQuestProgress(type) {
     
     
 </body>
-            </html>
+</html>
