@@ -597,12 +597,12 @@ let tradeListener = null;
 
 // --- 1. ENVOYER UNE DEMANDE D'ÉCHANGE ---
 window.initiateTrade = async (partnerUid, partnerName) => {
-    // 1. Vérification si en ligne via allUsers
+    // 1. Vérification si en ligne via allUsers (tolérance de 5 minutes)
     const partner = allUsers[partnerUid];
-    const isOnline = partner && (Date.now() - partner.lastSeen < 3000);
+    const isOnline = partner && (Date.now() - partner.lastSeen < 300000);
     
     if (!isOnline) {
-        showToast(`${partnerName} est hors ligne !`, "#e74c3c");
+        showToast(`${partnerName} semble être hors ligne !`, "#e74c3c");
         return;
     }
 
@@ -638,6 +638,7 @@ window.initiateTrade = async (partnerUid, partnerName) => {
         }
     }
 };
+
 
 function listenToTradeRequests() {
     // Écouter les nouvelles demandes entrantes
@@ -683,12 +684,13 @@ function listenToTradeRequests() {
 }
 
 function openTradeScreen(tradeId, partnerName) {
-    if (currentTradeId === tradeId) return; // Évite les boucles
+    if (!tradeId) return;
     currentTradeId = tradeId;
     
     document.getElementById('trade-partner-name').innerText = partnerName;
     document.getElementById('trade-screen').classList.remove('hidden');
     
+    // Reset des menus déroulants
     const zoneSelect = document.getElementById('trade-my-zone');
     zoneSelect.innerHTML = '<option value="">-- Aucune Zone --</option>';
     Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid).forEach(id => {
@@ -696,47 +698,58 @@ function openTradeScreen(tradeId, partnerName) {
         zoneSelect.innerHTML += `<option value="${id}">🚩 Zone ${id} (Niv.${z.level || 1})</option>`;
     });
 
+    // Nettoyage de l'ancien listener s'il existe
     if (tradeListener) tradeListener(); 
 
+    // ÉCOUTEUR PRINCIPAL
     tradeListener = onValue(ref(db, `trades/${tradeId}`), (snap) => {
         const data = snap.val();
-        
-        // Si le trade est supprimé par l'autre ou fini
         if (!data) {
+            console.log("Trade data nulle, fermeture...");
             closeTrade();
             return;
         }
 
         const partnerUid = tradeId.split('_').find(id => id !== myUser.uid);
         
-        // Sécurité : Si les nœuds joueurs n'existent pas encore, on crée un objet vide
+        // On récupère les données de chacun
         const me = data[myUser.uid] || { coins: 0, zoneId: "", ready: false };
         const them = data[partnerUid] || { coins: 0, zoneId: "", ready: false };
 
-        const partnerOfferDiv = document.getElementById('partner-offer');
-        partnerOfferDiv.innerHTML = `
-            <div style="color:#f1c40f; font-size:1.1rem;">💰 ${them.coins || 0} pièces</div>
-            <div style="color:#3498db; font-size:1.1rem;">🚩 ${them.zoneId ? 'Zone ' + them.zoneId : 'Aucune zone'}</div>
-            <div style="margin-top:10px; color:${them.ready ? '#2ecc71' : '#e67e22'}; font-weight:bold;">
-                ${them.ready ? '✅ PRÊT' : '⏳ RÉFLÉCHIT...'}
-            </div>
-        `;
+        console.log("Mise à jour Trade - Moi:", me, "Lui:", them);
 
+        // --- MISE À JOUR DE L'AFFICHAGE DU PARTENAIRE ---
+        const partnerOfferDiv = document.getElementById('partner-offer');
+        if (partnerOfferDiv) {
+            partnerOfferDiv.innerHTML = `
+                <div style="color:#f1c40f; font-size:1.2rem; margin-bottom:5px;">💰 ${them.coins || 0} pièces</div>
+                <div style="color:#3498db; font-size:1.1rem; margin-bottom:10px;">🚩 ${them.zoneId ? 'Zone ' + them.zoneId : 'Aucune zone'}</div>
+                <div id="partner-status-badge" style="
+                    padding: 8px; 
+                    border-radius: 8px; 
+                    background: ${them.ready ? 'rgba(46, 204, 113, 0.2)' : 'rgba(230, 126, 34, 0.2)'}; 
+                    color: ${them.ready ? '#2ecc71' : '#e67e22'}; 
+                    font-weight: bold; 
+                    border: 1px solid ${them.ready ? '#2ecc71' : '#e67e22'};
+                    text-align: center;">
+                    ${them.ready ? '✅ OFFRE VALIDÉE' : '⏳ EN ATTENTE...'}
+                </div>
+            `;
+        }
+
+        // --- MISE À JOUR DE MON BOUTON ---
         const acceptBtn = document.getElementById('accept-trade');
         if (me.ready) {
             acceptBtn.innerText = "OFFRE VERROUILLÉE";
             acceptBtn.style.background = "#555";
             acceptBtn.disabled = true;
-            acceptBtn.onclick = null;
         } else {
             acceptBtn.innerText = "VALIDER MON OFFRE";
             acceptBtn.style.background = "#2ecc71";
             acceptBtn.disabled = false;
-            acceptBtn.onclick = async () => {
-                await update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { ready: true });
-            };
         }
 
+        // --- COMPTE À REBOURS SI LES DEUX SONT PRÊTS ---
         if (me.ready && them.ready) {
             startTradeCountdown(tradeId);
         } else {
@@ -744,6 +757,7 @@ function openTradeScreen(tradeId, partnerName) {
         }
     });
 }
+
 
 
 document.getElementById('cancel-trade').onclick = async () => {
@@ -818,22 +832,24 @@ window.removeFriend = async (fUid, fName) => {
     }
 };
 
-
 // --- 5. FINALISATION (Mouvement des ressources) ---
 async function finalizeTrade() {
     const snap = await get(ref(db, `trades/${currentTradeId}`));
     const trade = snap.val();
     if (!trade) return;
 
-    const partnerUid = currentTradeId.replace(myUser.uid, "").replace("_", "");
+    // Extraction propre de l'ID partenaire
+    const partnerUid = currentTradeId.split('_').find(id => id !== myUser.uid);
     const me = trade[myUser.uid];
     const them = trade[partnerUid];
+
+    if (!me || !them) return;
 
     const updates = {};
     
     // Transfert des pièces
-    updates[`users/${myUser.uid}/coins`] = (myUser.coins - me.coins) + them.coins;
-    updates[`users/${partnerUid}/coins`] = (allUsers[partnerUid].coins - them.coins) + me.coins;
+    updates[`users/${myUser.uid}/coins`] = (myUser.coins - (me.coins || 0)) + (them.coins || 0);
+    updates[`users/${partnerUid}/coins`] = (allUsers[partnerUid].coins - (them.coins || 0)) + (me.coins || 0);
 
     // Transfert des zones
     if (me.zoneId) {
@@ -847,9 +863,10 @@ async function finalizeTrade() {
 
     await update(ref(db), updates);
     await set(ref(db, `trades/${currentTradeId}`), null);
-     showToast("Échange terminé !", "#e74c3c");
+    showToast("Échange terminé !", "#2ecc71");
     closeTrade();
 }
+
     
     
 function startGame() {
@@ -893,7 +910,6 @@ document.getElementById('trade-my-zone').onchange = (e) => {
 document.getElementById('accept-trade').onclick = async () => {
     if (!currentTradeId) return;
     await update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { ready: true });
-    showToast("Offre verrouillée. En attente du partenaire...", "#2ecc71");
 };
     
 
@@ -986,7 +1002,7 @@ map.on('click', () => {
             if (uid === myUser.uid) return; 
 
             const user = allUsers[uid];
-            if (user.lat && user.lng && (Date.now() - user.lastSeen < 300000)) {
+            if (user.lat && user.lng && (Date.now() - user.lastSeen < 30000000)) {
                 
                 const userZoneId = getZoneIdFromLatLng(user.lat, user.lng);
                 const dist = getDistance(playerPos.lat, playerPos.lng, user.lat, user.lng);
