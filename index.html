@@ -1385,7 +1385,7 @@ async function checkEncirclement(newZoneId) {
 
                 let chance = 0;
                 if (!targetZone || !targetZone.ownerId) {
-                    chance = 0.20; // 1/5
+                    chance = 0.10; // 1/5
                 } else {
                     const protection = getProtectionStatus(targetZone);
                     if (!protection.active) {
