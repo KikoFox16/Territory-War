@@ -467,17 +467,49 @@ document.getElementById('send-friend-req').onclick = async () => {
     }
 };
 
-// À ajouter dans ton <script type="module"> actuel
-async function writeLog(type, message, details = {}) {
-    const logRef = ref(db, 'logs/' + Date.now());
-    await set(logRef, {
-        timestamp: Date.now(),
-        type: type, // 'CAPTURE', 'TRADE', 'SHOP', 'UPGRADE', 'FRIEND'
-        user: myUser.username,
-        uid: myUser.uid,
-        message: message,
-        ...details
-    });
+async function writeLog(type, message) {
+    const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1499848607069769908/mkPbjShwO__s1_yOfdmYTYCGNmQxWWKsSZT4ZvRV_eYZ8eU5PiBYoTveK5kN8v5J8vDz"; // Colle ton URL ici
+
+    try {
+        const timestamp = Date.now();
+        
+        // 1. Envoi à Firebase (pour ta page Admin)
+        const logRef = ref(db, 'logs/' + timestamp);
+        await set(logRef, {
+            timestamp: timestamp,
+            type: type,
+            user: myUser.username,
+            uid: myUser.uid,
+            message: message
+        });
+
+        // 2. Envoi à Discord (Format propre avec Embed)
+        const colorMap = {
+            'CAPTURE': 15158332, // Rouge
+            'STEAL': 15158332,   // Rouge
+            'TRADE': 15844367,   // Jaune
+            'SHOP': 3066993,     // Vert
+            'UPGRADE': 10181046, // Violet
+            'FRIEND': 3447003    // Bleu
+        };
+
+        await fetch(DISCORD_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                embeds: [{
+                    title: `LOG : ${type}`,
+                    description: `**${myUser.username}** ${message.toLowerCase()}`,
+                    color: colorMap[type] || 3447003,
+                    timestamp: new Date().toISOString(),
+                    footer: { text: `ID Joueur: ${myUser.uid}` }
+                }]
+            })
+        });
+
+    } catch(e) { 
+        console.error("Erreur Log/Discord:", e); 
+    }
 }
     
 // --- SYSTÈME DE TOAST ---
