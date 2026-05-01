@@ -1345,22 +1345,82 @@ function checkCurrentZoneContext() {
     }
 }
 
+async function checkEncirclement(newZoneId) {
+    const parts = newZoneId.split('_');
+    const lat = parseInt(parts[0]);
+    const lng = parseInt(parts[1]);
+    const range = 5; // Distance max pour chercher un contour (5 zones de rayon)
+    const updates = {};
+    let zonesConquered = 0;
+
+    // On cherche si cette zone fait partie d'un périmètre
+    // Algorithme simplifié : On cherche des zones à nous aux 4 points cardinaux
+    for (let r = 1; r <= range; r++) {
+        const points = {
+            top: `${lat + r}_${lng}`,
+            bottom: `${lat - r}_${lng}`,
+            left: `${lat}_${lng - r}`,
+            right: `${lat}_${lng + r}`
+        };
+
+        // Si on possède des zones aux 4 extrémités de ce rayon
+        if (allZones[points.top]?.ownerId === myUser.uid &&
+            allZones[points.bottom]?.ownerId === myUser.uid &&
+            allZones[points.left]?.ownerId === myUser.uid &&
+            allZones[points.right]?.ownerId === myUser.uid) {
+
+            // On a un carré ! On scanne tout l'intérieur
+            for (let i = lat - r + 1; i < lat + r; i++) {
+                for (let j = lng - r + 1; j < lng + r; j++) {
+                    const targetId = `${i}_${j}`;
+                    const targetZone = allZones[targetId];
+
+                    // Si la zone est déjà à nous, on passe
+                    if (targetZone?.ownerId === myUser.uid) continue;
+
+                    let chance = 0;
+                    if (!targetZone || !targetZone.ownerId) {
+                        chance = 0.20; // 1 chance sur 5 pour zones libres
+                    } else if (targetZone.ownerId !== myUser.uid) {
+                        // On vérifie si la zone est protégée
+                        const protection = getProtectionStatus(targetZone);
+                        if (!protection.active) {
+                            chance = 0.04; // 1 chance sur 25 pour zones ennemies (non protégées)
+                        }
+                    }
+
+                    if (Math.random() < chance) {
+                        updates[`zones/${targetId}`] = {
+                            ownerId: myUser.uid,
+                            level: targetZone ? (targetZone.level || 1) : 1,
+                            forSale: false
+                        };
+                        zonesConquered++;
+                    }
+                }
+            }
+            break; // On a trouvé le carré le plus proche, on s'arrête
+        }
+    }
+
+    if (zonesConquered > 0) {
+        await update(ref(db), updates);
+        showToast(`💥 Effet de siège ! ${zonesConquered} zones bonus capturées !`, "#9b59b6");
+    }
+}
+    
 
 async function captureZone(zoneId, existingZone) {
     document.getElementById('capture-text').innerText = "CAPTURE RÉUSSIE !";
     
-    // 1. Détecter le type d'action AVANT de modifier la DB
     const isSteal = (existingZone && existingZone.ownerId && existingZone.ownerId !== myUser.uid);
-
     const updates = {};
     
-    // Gérer l'ancien propriétaire s'il y en a un
     if (existingZone && existingZone.ownerId) {
         const oldOwnerRef = ref(db, `users/${existingZone.ownerId}/zonesCount`);
         runTransaction(oldOwnerRef, (currentCount) => (currentCount || 0) - 1);
     }
 
-    // Calculer les récompenses de palier
     let newTotal = (myUser.totalCaptured || 0) + 1;
     let coinsGained = 0;
     if (newTotal % 10 === 0) {
@@ -1368,31 +1428,28 @@ async function captureZone(zoneId, existingZone) {
         showToast("Bonus de conquête ! +15 pièces !", "#f1c40f");
     }
 
-    // Préparer les updates de l'utilisateur
     updates[`users/${myUser.uid}/totalCaptured`] = newTotal;
     updates[`users/${myUser.uid}/zonesCount`] = (myUser.zonesCount || 0) + 1;
     if (coinsGained > 0) {
         updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + coinsGained;
     }
 
-    // Update de la zone
     updates[`zones/${zoneId}`] = {
         ownerId: myUser.uid,
         level: existingZone ? (existingZone.level || 1) : 1,
         forSale: false,
         price: 0,
-        protectionExpiry: 0 // On retire la protection si elle est volée
+        protectionExpiry: 0
     };
 
-    // 2. Envoyer les mises à jour
     await update(ref(db), updates);
 
-    // 3. Mettre à jour la progression des quêtes
+    // --- NOUVEAU : On vérifie si cela déclenche un encerclement ---
+    await checkEncirclement(zoneId);
+
     if (isSteal) {
-        console.log("Action: VOL");
         updateQuestProgress('steal');
     } else {
-        console.log("Action: CAPTURE SIMPLE");
         updateQuestProgress('capture');
     }
     
@@ -2066,4 +2123,4 @@ async function updateQuestProgress(type) {
     
     
 </body>
-    </html>
+</html>
