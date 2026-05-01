@@ -467,6 +467,19 @@ document.getElementById('send-friend-req').onclick = async () => {
     }
 };
 
+// À ajouter dans ton <script type="module"> actuel
+async function writeLog(type, message, details = {}) {
+    const logRef = ref(db, 'logs/' + Date.now());
+    await set(logRef, {
+        timestamp: Date.now(),
+        type: type, // 'CAPTURE', 'TRADE', 'SHOP', 'UPGRADE', 'FRIEND'
+        user: myUser.username,
+        uid: myUser.uid,
+        message: message,
+        ...details
+    });
+}
+    
 // --- SYSTÈME DE TOAST ---
 function showToast(message, color = '#3498db') {
     const container = document.getElementById('toast-container');
@@ -581,14 +594,11 @@ window.acceptFriend = async (fUid, fName) => {
     const updates = {};
     updates[`friends/${myUser.uid}/${fUid}`] = { name: fName };
     updates[`friends/${fUid}/${myUser.uid}`] = { name: myUser.username };
-        updates[`requests/${myUser.uid}/${fUid}`] = null; 
-    
-    // AJOUTE CETTE LIGNE ICI :
-    logEvent("SOCIAL", `Est maintenant ami avec ${fName} (UID: ${fUid})`);
-
+    updates[`requests/${myUser.uid}/${fUid}`] = null; 
     
     await update(ref(db), updates);
-     showToast("Ami ajouté !", "#e74c3c");
+    showToast("Ami ajouté !", "#e74c3c");
+    writeLog('FRIEND', `Est maintenant ami avec ${fName}`);
 };
 
 window.refuseFriend = async (fUid) => {
@@ -1419,11 +1429,8 @@ async function checkEncirclement(newZoneId) {
 async function captureZone(zoneId, existingZone) {
     document.getElementById('capture-text').innerText = "CAPTURE RÉUSSIE !";
     
-        const isSteal = (existingZone && existingZone.ownerId && existingZone.ownerId !== myUser.uid);
+    const isSteal = (existingZone && existingZone.ownerId && existingZone.ownerId !== myUser.uid);
     const updates = {};
-    
-    // AJOUTE CETTE LIGNE ICI :
-    logEvent(isSteal ? "VOL" : "CONQUÊTE", `Zone ${zoneId} capturée (Ancien : ${existingZone?.ownerId || 'Libre'})`);
     
     if (existingZone && existingZone.ownerId) {
         const oldOwnerRef = ref(db, `users/${existingZone.ownerId}/zonesCount`);
@@ -1452,7 +1459,7 @@ async function captureZone(zoneId, existingZone) {
     };
 
     await update(ref(db), updates);
-
+    writeLog(isSteal ? 'STEAL' : 'CAPTURE', `${isSteal ? 'A volé' : 'A capturé'} la zone ${zoneId}`);
     // --- NOUVEAU : On vérifie si cela déclenche un encerclement ---
     await checkEncirclement(zoneId);
 
@@ -1487,17 +1494,14 @@ async function captureZone(zoneId, existingZone) {
         async function upgradeZone(zoneId, currentLevel, cost) {
             if (myUser.coins < cost) return;
             
-                        const updates = {};
+            const updates = {};
             updates[`users/${myUser.uid}/coins`] = myUser.coins - cost;
             updates[`zones/${zoneId}/level`] = currentLevel + 1;
-            
-            // AJOUTE CETTE LIGNE ICI :
-            logEvent("AMÉLIORATION", `Zone ${zoneId} passée au Niveau ${currentLevel + 1} pour ${cost}💰`);
-
             updateQuestProgress('upgrade');
 
                 
             await update(ref(db), updates);
+            writeLog('UPGRADE', `A amélioré la zone ${zoneId} au niveau ${currentLevel + 1} (Coût: ${cost}💰)`);
         }
 
         async function setZoneForSale(zoneId, isForSale, price) {
@@ -1514,14 +1518,9 @@ async function captureZone(zoneId, existingZone) {
             updates[`users/${myUser.uid}/coins`] = myUser.coins - zoneData.price;
             updates[`users/${myUser.uid}/zonesCount`] = (myUser.zonesCount || 0) + 1;
             
-                        const seller = allUsers[zoneData.ownerId];
+            const seller = allUsers[zoneData.ownerId];
             if (seller) {
                 updates[`users/${zoneData.ownerId}/coins`] = (seller.coins || 0) + zoneData.price;
-                
-                // AJOUTE CETTE LIGNE ICI :
-                logEvent("ACHAT", `A acheté la Zone ${zoneId} à ${seller.username} pour ${zoneData.price}💰`);
-            }
-
                 updates[`users/${zoneData.ownerId}/zonesCount`] = Math.max(0, (seller.zonesCount || 1) - 1);
             }
 
@@ -1530,7 +1529,8 @@ async function captureZone(zoneId, existingZone) {
             updates[`zones/${zoneId}/price`] = 0;
 
             await update(ref(db), updates);
-             showToast("Zone achetée avec succès !", "#e74c3c");
+            showToast("Zone achetée avec succès !", "#e74c3c");
+            writeLog('SHOP', `A acheté la zone ${zoneId} à ${allUsers[zoneData.ownerId]?.username || 'quelqu\'un'} pour ${zoneData.price}💰`);
         }
 
         async function collectIncome() {
@@ -1928,21 +1928,6 @@ async function updateQuestProgress(type) {
     }
 }
 
-// --- FONCTION DE LOGGING ADMIN ---
-async function logEvent(type, details) {
-    const logRef = ref(db, 'logs');
-    const newLog = {
-        timestamp: Date.now(),
-        type: type, // CAPTURE, UPGRADE, TRADE, etc.
-        user: myUser.username,
-        uid: myUser.uid,
-        details: details
-    };
-    // On utilise push pour créer une liste chronologique
-    const { push } = await import("https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js");
-    push(logRef, newLog);
-}
-    
     
     
         function updateZoneColors() {
@@ -2156,4 +2141,4 @@ async function logEvent(type, details) {
     
     
 </body>
-</html>
+</html>   
