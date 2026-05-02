@@ -468,12 +468,11 @@ document.getElementById('send-friend-req').onclick = async () => {
 };
 
 async function writeLog(type, message) {
-    const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1499848607069769908/mkPbjShwO__s1_yOfdmYTYCGNmQxWWKsSZT4ZvRV_eYZ8eU5PiBYoTveK5kN8v5J8vDz"; // Colle ton URL ici
+    const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1499848607069769908/mkPbjShwO__s1_yOfdmYTYCGNmQxWWKsSZT4ZvRV_eYZ8eU5PiBYoTveK5kN8v5J8vDz"; 
 
     try {
         const timestamp = Date.now();
         
-        // 1. Envoi à Firebase (pour ta page Admin)
         const logRef = ref(db, 'logs/' + timestamp);
         await set(logRef, {
             timestamp: timestamp,
@@ -483,14 +482,13 @@ async function writeLog(type, message) {
             message: message
         });
 
-        // 2. Envoi à Discord (Format propre avec Embed)
         const colorMap = {
-            'CAPTURE': 15158332, // Rouge
-            'STEAL': 15158332,   // Rouge
-            'TRADE': 15844367,   // Jaune
-            'SHOP': 3066993,     // Vert
-            'UPGRADE': 10181046, // Violet
-            'FRIEND': 3447003    // Bleu
+            'CAPTURE': 15158332, 
+            'STEAL': 15158332,   
+            'TRADE': 15844367,   
+            'SHOP': 3066993,     
+            'UPGRADE': 10181046, 
+            'FRIEND': 3447003    
         };
 
         await fetch(DISCORD_WEBHOOK_URL, {
@@ -512,7 +510,6 @@ async function writeLog(type, message) {
     }
 }
     
-// --- SYSTÈME DE TOAST ---
 function showToast(message, color = '#3498db') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
@@ -523,7 +520,6 @@ function showToast(message, color = '#3498db') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-// --- SYSTÈME DE MODALE PROMISE (Remplace Alert/Prompt) ---
 function customDialog({ title, text, showInput = false, inputType = 'text', placeholder = '' }) {
     return new Promise((resolve) => {
         const modal = document.getElementById('custom-modal');
@@ -556,7 +552,6 @@ function customDialog({ title, text, showInput = false, inputType = 'text', plac
 }
 
 function listenToFriends() {
-    // --- 1. PARTIE DEMANDES D'AMIS ---
     onValue(ref(db, `requests/${myUser.uid}`), (snap) => {
         const reqs = snap.val();
         const container = document.getElementById('friends-requests');
@@ -582,7 +577,6 @@ function listenToFriends() {
         }
     });
 
-    // --- 2. PARTIE LISTE D'AMIS (Statut + Restriction Échange) ---
     onValue(ref(db, `friends/${myUser.uid}`), (snap) => {
         const friends = snap.val();
         const container = document.getElementById('friends-list');
@@ -593,7 +587,6 @@ function listenToFriends() {
                 const fData = friends[fUid];
                 const userInAll = allUsers[fUid];
                 
-                // Vérification du statut en ligne (5 minutes)
                 const isOnline = userInAll && (Date.now() - userInAll.lastSeen < 300000);
                 const statusColor = isOnline ? '#2ecc71' : '#e74c3c';
                 const statusText = isOnline ? 'EN LIGNE' : 'HORS LIGNE';
@@ -637,226 +630,227 @@ window.refuseFriend = async (fUid) => {
     await set(ref(db, `requests/${myUser.uid}/${fUid}`), null);
 };
 
-// --- VARIABLES DE SESSION ---
+/* --- NOUVEAU SYSTÈME DE TRADE --- */
 let currentTradeId = null;
 let tradeListener = null;
 
-// --- 1. ENVOYER UNE DEMANDE D'ÉCHANGE ---
+// Initialiser l'échange
 window.initiateTrade = async (partnerUid, partnerName) => {
-    // 1. Vérification si en ligne via allUsers (tolérance de 5 minutes)
-    const partner = allUsers[partnerUid];
-    const isOnline = partner && (Date.now() - partner.lastSeen < 300000);
-    
-    if (!isOnline) {
-        showToast(`${partnerName} semble être hors ligne !`, "#e74c3c");
+    const lastTradeKey = `last_req_${myUser.uid}_${partnerUid}`;
+    const lastTime = localStorage.getItem(lastTradeKey);
+    if (lastTime && (Date.now() - lastTime < 30000)) {
+        showToast("Attends un peu avant de renvoyer une demande.", "#f1c40f");
         return;
     }
 
-    // 2. Vérification du délai de 20 minutes (via localStorage)
-    const lastTradeKey = `last_trade_${myUser.uid}_${partnerUid}`;
-    const lastTradeTime = localStorage.getItem(lastTradeKey);
-    const now = Date.now();
-    const cooldown = 20 * 60 * 1000; // 20 minutes en ms
-
-    if (lastTradeTime && (now - lastTradeTime < cooldown)) {
-        const remainingMin = Math.ceil((cooldown - (now - lastTradeTime)) / 60000);
-        showToast(`Attends encore ${remainingMin} min avant de solliciter ${partnerName}.`, "#f1c40f");
-        return;
-    }
-
-    const confirmation = await customDialog({
-        title: "🤝 Proposition d'échange",
-        text: `Veux-tu envoyer une offre d'échange à ${partnerName} ?`
+    const ok = await customDialog({
+        title: "🤝 Proposer un échange",
+        text: `Veux-tu inviter ${partnerName} à négocier ?`
     });
 
-    if (confirmation) {
-        try {
-            await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
-                from: myUser.username,
-                fromUid: myUser.uid,
-                timestamp: now
-            });
-            // Enregistre le temps de l'envoi
-            localStorage.setItem(lastTradeKey, now);
-            showToast("Demande d'échange envoyée !", "#2ecc71");
-        } catch (e) {
-            showToast("Erreur lors de l'envoi.", "#e74c3c");
-        }
+    if (ok) {
+        localStorage.setItem(lastTradeKey, Date.now());
+        await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
+            from: myUser.username,
+            fromUid: myUser.uid,
+            timestamp: Date.now()
+        });
+        showToast("Invitation envoyée !", "#3498db");
     }
 };
 
-
+// Écouter les invitations entrantes
 function listenToTradeRequests() {
-    // Écouter les nouvelles demandes entrantes
-    onValue(ref(db, `tradeRequests/${myUser.uid}`), (snap) => {
+    onValue(ref(db, `tradeRequests/${myUser.uid}`), async (snap) => {
         const reqs = snap.val();
         if (!reqs) return;
-        
-        Object.keys(reqs).forEach(async (fromUid) => {
+
+        for (const fromUid in reqs) {
             const r = reqs[fromUid];
             const accept = await customDialog({
-                title: "🤝 Demande d'échange",
-                text: `${r.from} souhaite commercer avec toi !`
+                title: "🤝 Invitation",
+                text: `${r.from} veut échanger avec toi.`
             });
 
             if (accept) {
-                const tradeId = myUser.uid < fromUid ? `${myUser.uid}_${fromUid}` : `${fromUid}_${myUser.uid}`;
-                await set(ref(db, `trades/${tradeId}`), {
-                    status: "active",
-                    [myUser.uid]: { ready: false, coins: 0, zoneId: "" },
-                    [fromUid]: { ready: false, coins: 0, zoneId: "" }
+                const tId = myUser.uid < fromUid ? `${myUser.uid}_${fromUid}` : `${fromUid}_${myUser.uid}`;
+                await update(ref(db), {
+                    [`trades/${tId}`]: {
+                        status: "active",
+                        lastUpdate: Date.now(),
+                        [myUser.uid]: { coins: 0, zoneId: "", ready: false, name: myUser.username },
+                        [fromUid]: { coins: 0, zoneId: "", ready: false, name: r.from }
+                    },
+                    [`tradeRequests/${myUser.uid}/${fromUid}`]: null
                 });
-                await set(ref(db, `tradeRequests/${myUser.uid}/${fromUid}`), null);
-                openTradeScreen(tradeId, r.from);
             } else {
                 await set(ref(db, `tradeRequests/${myUser.uid}/${fromUid}`), null);
             }
-        });
+        }
     });
 
-    // CRUCIAL : Détecter si on est déjà dans un trade (même après refresh)
+    // Écouter si un trade devient actif pour nous
     onValue(ref(db, `trades`), (snap) => {
-        const allTrades = snap.val();
-        if (!allTrades || currentTradeId) return; // Si déjà ouvert, on ne fait rien
-
-        Object.keys(allTrades).forEach(tId => {
-            if (tId.includes(myUser.uid)) {
-                const partnerUid = tId.split('_').find(id => id !== myUser.uid);
-                const partnerName = allUsers[partnerUid]?.username || "Partenaire";
-                openTradeScreen(tId, partnerName);
-            }
-        });
+        const trades = snap.val();
+        if (!trades) return;
+        const activeTradeId = Object.keys(trades).find(id => id.includes(myUser.uid) && trades[id].status === "active");
+        if (activeTradeId && activeTradeId !== currentTradeId) {
+            openTradeScreen(activeTradeId);
+        }
     });
 }
 
-function openTradeScreen(tradeId, partnerName) {
-    if (!tradeId) return;
+function openTradeScreen(tradeId) {
     currentTradeId = tradeId;
+    const partnerUid = tradeId.split('_').find(id => id !== myUser.uid);
     
-    document.getElementById('trade-partner-name').innerText = partnerName;
     document.getElementById('trade-screen').classList.remove('hidden');
     
-    // Reset des menus déroulants
+    // Remplir la liste de nos zones
     const zoneSelect = document.getElementById('trade-my-zone');
     zoneSelect.innerHTML = '<option value="">-- Aucune Zone --</option>';
     Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid).forEach(id => {
-        const z = allZones[id];
-        zoneSelect.innerHTML += `<option value="${id}">🚩 Zone ${id} (Niv.${z.level || 1})</option>`;
+        zoneSelect.innerHTML += `<option value="${id}">🚩 Zone ${id}</option>`;
     });
 
-    // Nettoyage de l'ancien listener s'il existe
-    if (tradeListener) tradeListener(); 
+    if (tradeListener) tradeListener();
 
-    // ÉCOUTEUR PRINCIPAL
     tradeListener = onValue(ref(db, `trades/${tradeId}`), (snap) => {
         const data = snap.val();
-        if (!data) {
-            console.log("Trade data nulle, fermeture...");
-            closeTrade();
+        if (!data || data.status !== "active") {
+            closeTradeUI();
             return;
         }
 
-        const partnerUid = tradeId.split('_').find(id => id !== myUser.uid);
-        
-        // On récupère les données de chacun
-        const me = data[myUser.uid] || { coins: 0, zoneId: "", ready: false };
-        const them = data[partnerUid] || { coins: 0, zoneId: "", ready: false };
+        const me = data[myUser.uid];
+        const them = data[partnerUid];
 
-        console.log("Mise à jour Trade - Moi:", me, "Lui:", them);
+        document.getElementById('trade-partner-name').innerText = them.name;
 
-        // --- MISE À JOUR DE L'AFFICHAGE DU PARTENAIRE ---
-        const partnerOfferDiv = document.getElementById('partner-offer');
-        if (partnerOfferDiv) {
-            partnerOfferDiv.innerHTML = `
-                <div style="color:#f1c40f; font-size:1.2rem; margin-bottom:5px;">💰 ${them.coins || 0} pièces</div>
-                <div style="color:#3498db; font-size:1.1rem; margin-bottom:10px;">🚩 ${them.zoneId ? 'Zone ' + them.zoneId : 'Aucune zone'}</div>
-                <div id="partner-status-badge" style="
-                    padding: 8px; 
-                    border-radius: 8px; 
-                    background: ${them.ready ? 'rgba(46, 204, 113, 0.2)' : 'rgba(230, 126, 34, 0.2)'}; 
-                    color: ${them.ready ? '#2ecc71' : '#e67e22'}; 
-                    font-weight: bold; 
-                    border: 1px solid ${them.ready ? '#2ecc71' : '#e67e22'};
-                    text-align: center;">
-                    ${them.ready ? '✅ OFFRE VALIDÉE' : '⏳ EN ATTENTE...'}
-                </div>
-            `;
-        }
+        // Mise à jour de l'affichage adverse
+        document.getElementById('partner-offer').innerHTML = `
+            <div style="color:#f1c40f; font-size:1.2rem;">💰 ${them.coins || 0}</div>
+            <div style="color:#3498db; font-size:1rem;">🚩 ${them.zoneId || 'Rien'}</div>
+            <div style="margin-top:10px; color:${them.ready ? '#2ecc71' : '#e67e22'}">
+                ${them.ready ? '✅ PRÊT' : '⏳ RÉFLÉCHIT...'}
+            </div>
+        `;
 
-        // --- MISE À JOUR DE MON BOUTON ---
-        const acceptBtn = document.getElementById('accept-trade');
+        // UI Bouton Validation
+        const btn = document.getElementById('accept-trade');
         if (me.ready) {
-            acceptBtn.innerText = "OFFRE VERROUILLÉE";
-            acceptBtn.style.background = "#555";
-            acceptBtn.disabled = true;
+            btn.innerText = "OFFRE VERROUILLÉE";
+            btn.style.background = "#555";
         } else {
-            acceptBtn.innerText = "VALIDER MON OFFRE";
-            acceptBtn.style.background = "#2ecc71";
-            acceptBtn.disabled = false;
+            btn.innerText = "VALIDER MON OFFRE";
+            btn.style.background = "#2ecc71";
         }
 
-        // --- COMPTE À REBOURS SI LES DEUX SONT PRÊTS ---
+        // Finalisation automatique si les deux sont ready
         if (me.ready && them.ready) {
-            startTradeCountdown(tradeId);
+            startFinalCountdown(tradeId);
         } else {
-            stopTradeCountdown();
+            stopFinalCountdown();
         }
     });
 }
 
+// Actions d'input
+document.getElementById('trade-my-coins').oninput = (e) => {
+    let val = Math.max(0, parseInt(e.target.value) || 0);
+    if (val > myUser.coins) val = myUser.coins;
+    update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { coins: val, ready: false });
+};
 
+document.getElementById('trade-my-zone').onchange = (e) => {
+    update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { zoneId: e.target.value, ready: false });
+};
+
+document.getElementById('accept-trade').onclick = () => {
+    update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { ready: true });
+};
 
 document.getElementById('cancel-trade').onclick = async () => {
     if (currentTradeId) {
-        // On supprime la session pour tout le monde
-        await set(ref(db, `trades/${currentTradeId}`), null);
-        closeTrade();
+        await remove(ref(db, `trades/${currentTradeId}`));
+        closeTradeUI();
     }
 };
 
-function closeTrade() {
-    if (tradeListener) tradeListener(); // Arrête l'écoute Firebase
+function closeTradeUI() {
+    if (tradeListener) tradeListener();
     tradeListener = null;
     currentTradeId = null;
     document.getElementById('trade-screen').classList.add('hidden');
-    document.getElementById('trade-status').innerText = "";
-    stopTradeCountdown();
+    stopFinalCountdown();
 }
 
-
-let tradeCountdownInterval = null;
-
-function startTradeCountdown(tradeId) {
-    if (tradeCountdownInterval) return;
-    let count = 3;
-    const statusDiv = document.getElementById('trade-status');
-    
-    tradeCountdownInterval = setInterval(async () => {
-        statusDiv.innerText = `L'ÉCHANGE DÉBUTE DANS ${count}...`;
-        if (count <= 0) {
-            clearInterval(tradeCountdownInterval);
-            tradeCountdownInterval = null;
-            // Un seul des deux joueurs déclenche la finalisation (le premier dans l'ordre alpha par ex)
-            const parts = tradeId.split('_');
-            if (myUser.uid === parts[0]) {
-                await finalizeTrade();
+let tradeCd = null;
+function startFinalCountdown(tId) {
+    if (tradeCd) return;
+    let sec = 3;
+    const status = document.getElementById('trade-status');
+    tradeCd = setInterval(async () => {
+        status.innerText = `ÉCHANGE DANS ${sec}s...`;
+        if (sec <= 0) {
+            clearInterval(tradeCd);
+            tradeCd = null;
+            // Un seul des deux déclenche la transaction (le premier dans l'alphabet)
+            if (myUser.uid < tId.split('_').find(id => id !== myUser.uid)) {
+                executeTradeTransaction(tId);
             }
         }
-        count--;
+        sec--;
     }, 1000);
 }
 
-function stopTradeCountdown() {
-    if (tradeCountdownInterval) {
-        clearInterval(tradeCountdownInterval);
-        tradeCountdownInterval = null;
-        document.getElementById('trade-status').innerText = "";
+function stopFinalCountdown() {
+    clearInterval(tradeCd);
+    tradeCd = null;
+    document.getElementById('trade-status').innerText = "";
+}
+
+async function executeTradeTransaction(tId) {
+    const snap = await get(ref(db, `trades/${tId}`));
+    const data = snap.val();
+    if (!data) return;
+
+    const uids = tId.split('_');
+    const p1 = uids[0], p2 = uids[1];
+    const off1 = data[p1], off2 = data[p2];
+
+    const updates = {};
+    
+    // Mise à jour des monnaies (Snapshot actuel pour éviter les erreurs)
+    const user1Snap = await get(ref(db, `users/${p1}`));
+    const user2Snap = await get(ref(db, `users/${p2}`));
+    
+    updates[`users/${p1}/coins`] = (user1Snap.val().coins - off1.coins) + off2.coins;
+    updates[`users/${p2}/coins`] = (user2Snap.val().coins - off2.coins) + off1.coins;
+
+    // Échange des zones
+    if (off1.zoneId) {
+        updates[`zones/${off1.zoneId}/ownerId`] = p2;
+        updates[`zones/${off1.zoneId}/forSale`] = false;
+    }
+    if (off2.zoneId) {
+        updates[`zones/${off2.zoneId}/ownerId`] = p1;
+        updates[`zones/${off2.zoneId}/forSale`] = false;
+    }
+
+    // Clôture du trade
+    updates[`trades/${tId}`] = null;
+
+    try {
+        await update(ref(db), updates);
+        writeLog('TRADE', `Échange réussi entre ${off1.name} et ${off2.name}`);
+    } catch (e) {
+        console.error("Échec Transaction:", e);
     }
 }
     
 
 window.removeFriend = async (fUid, fName) => {
-    // On utilise ta modale personnalisée
     const confirmed = await customDialog({
         title: "🗑️ Supprimer l'ami",
         text: `Es-tu sûr de vouloir retirer ${fName} de tes amis ? Vous ne pourrez plus faire d'échanges.`
@@ -864,7 +858,6 @@ window.removeFriend = async (fUid, fName) => {
 
     if (confirmed) {
         const updates = {};
-        // On supprime des deux côtés (pour moi et pour lui)
         updates[`friends/${myUser.uid}/${fUid}`] = null;
         updates[`friends/${fUid}/${myUser.uid}`] = null;
         
@@ -877,43 +870,6 @@ window.removeFriend = async (fUid, fName) => {
         }
     }
 };
-
-// --- 5. FINALISATION (Mouvement des ressources) ---
-async function finalizeTrade() {
-    const snap = await get(ref(db, `trades/${currentTradeId}`));
-    const trade = snap.val();
-    if (!trade) return;
-
-    // Extraction propre de l'ID partenaire
-    const partnerUid = currentTradeId.split('_').find(id => id !== myUser.uid);
-    const me = trade[myUser.uid];
-    const them = trade[partnerUid];
-
-    if (!me || !them) return;
-
-    const updates = {};
-    
-    // Transfert des pièces
-    updates[`users/${myUser.uid}/coins`] = (myUser.coins - (me.coins || 0)) + (them.coins || 0);
-    updates[`users/${partnerUid}/coins`] = (allUsers[partnerUid].coins - (them.coins || 0)) + (me.coins || 0);
-
-    // Transfert des zones
-    if (me.zoneId) {
-        updates[`zones/${me.zoneId}/ownerId`] = partnerUid;
-        updates[`zones/${me.zoneId}/forSale`] = false;
-    }
-    if (them.zoneId) {
-        updates[`zones/${them.zoneId}/ownerId`] = myUser.uid;
-        updates[`zones/${them.zoneId}/forSale`] = false;
-    }
-
-    await update(ref(db), updates);
-    await set(ref(db, `trades/${currentTradeId}`), null);
-    showToast("Échange terminé !", "#2ecc71");
-    closeTrade();
-}
-
-    
     
 function startGame() {
     document.getElementById('login-screen').classList.add('hidden');
@@ -935,7 +891,6 @@ function startGame() {
     updateHUD();
 }
 
-// Mise à jour de l'offre de pièces en temps réel
 document.getElementById('trade-my-coins').oninput = (e) => {
     if (!currentTradeId) return;
     const val = parseInt(e.target.value) || 0;
@@ -946,13 +901,11 @@ document.getElementById('trade-my-coins').oninput = (e) => {
     update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { coins: val, ready: false });
 };
 
-// Mise à jour de la zone proposée
 document.getElementById('trade-my-zone').onchange = (e) => {
     if (!currentTradeId) return;
     update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { zoneId: e.target.value, ready: false });
 };
 
-// Bouton de validation de l'offre
 document.getElementById('accept-trade').onclick = async () => {
     if (!currentTradeId) return;
     await update(ref(db, `trades/${currentTradeId}/${myUser.uid}`), { ready: true });
@@ -1396,12 +1349,10 @@ async function checkEncirclement(newZoneId) {
     const lat = parseInt(parts[0]);
     const lng = parseInt(parts[1]);
     
-    const range = 5; // Rayon de recherche
+    const range = 5; 
     const updates = {};
     let zonesConquered = 0;
 
-    // 1. On définit les limites du carré potentiel autour de la zone posée
-    // On cherche la zone la plus éloignée à nous dans chaque direction (max range)
     let minLat = lat, maxLat = lat, minLng = lng, maxLng = lng;
 
     for (let r = 1; r <= range; r++) {
@@ -1410,20 +1361,16 @@ async function checkEncirclement(newZoneId) {
         if (allZones[`${lat}_${lng - r}`]?.ownerId === myUser.uid) minLng = lng - r;
         if (allZones[`${lat}_${lng + r}`]?.ownerId === myUser.uid) maxLng = lng + r;
         
-        // Bonus : On vérifie aussi les coins (diagonales) pour élargir la boîte
         if (allZones[`${lat - r}_${lng - r}`]?.ownerId === myUser.uid) { minLat = lat - r; minLng = lng - r; }
         if (allZones[`${lat + r}_${lng + r}`]?.ownerId === myUser.uid) { maxLat = lat + r; maxLng = lng + r; }
     }
 
-    // 2. Si on a trouvé des limites formant un rectangle
     if (minLat < lat && maxLat > lat && minLng < lng && maxLng > lng) {
         
-        // On scanne tout ce qui est à l'intérieur de cette "boîte"
         for (let i = minLat + 1; i < maxLat; i++) {
             for (let j = minLng + 1; j < maxLng; j++) {
                 const targetId = `${i}_${j}`;
                 
-                // On ne se capture pas soi-même
                 if (targetId === newZoneId) continue;
 
                 const targetZone = allZones[targetId];
@@ -1431,11 +1378,11 @@ async function checkEncirclement(newZoneId) {
 
                 let chance = 0;
                 if (!targetZone || !targetZone.ownerId) {
-                    chance = 0.10; // 1/5
+                    chance = 0.10; 
                 } else {
                     const protection = getProtectionStatus(targetZone);
                     if (!protection.active) {
-                        chance = 0.04; // 1/25
+                        chance = 0.04; 
                     }
                 }
 
@@ -1492,7 +1439,6 @@ async function captureZone(zoneId, existingZone) {
 
     await update(ref(db), updates);
     writeLog(isSteal ? 'STEAL' : 'CAPTURE', `${isSteal ? 'A volé' : 'A capturé'} la zone ${zoneId}`);
-    // --- NOUVEAU : On vérifie si cela déclenche un encerclement ---
     await checkEncirclement(zoneId);
 
     if (isSteal) {
@@ -1643,12 +1589,11 @@ function selectZone(zoneId) {
         btnProtect.onclick = async (e) => {
             e.stopPropagation();
             
-            // Préparation de la modale custom avec les 3 plans
             const modal = document.getElementById('custom-modal');
             const container = document.getElementById('modal-input-container');
             document.getElementById('modal-title').innerText = "Bouclier de Protection";
             document.getElementById('modal-text').innerText = "Choisissez la durée de votre immunité :";
-            document.getElementById('modal-confirm').classList.add('hidden'); // On cache le bouton valider car le clic sur le plan valide
+            document.getElementById('modal-confirm').classList.add('hidden'); 
             
             container.innerHTML = '';
             
@@ -1837,7 +1782,6 @@ function getProtectionStatus(zone) {
     }, 1500);
 });
 
-// --- INITIALISATION DES QUÊTES ---
 const questsBtn = document.getElementById('quests-toggle-btn');
 const questsScreen = document.getElementById('quests-screen');
 questsBtn.onclick = () => {
@@ -1846,28 +1790,24 @@ questsBtn.onclick = () => {
 };
 document.getElementById('close-quests').onclick = () => questsScreen.classList.add('hidden');
 
-// Fonction pour générer ou récupérer les quêtes
 async function checkQuests() {
     const snap = await get(ref(db, `users/${myUser.uid}/quests`));
     let userQuests = snap.val() || {};
     const now = Date.now();
     let needUpdate = false;
 
-    // Type 1: Capturer des zones (24h)
     if (!userQuests.q1 || now > userQuests.q1.expiry) {
-        const target = Math.floor(Math.random() * 9) + 2; // 2 à 10
+        const target = Math.floor(Math.random() * 9) + 2; 
         userQuests.q1 = { type: 'capture', target, current: 0, reward: target * 3, expiry: now + 86400000, label: `Conquérir ${target} zones` };
         needUpdate = true;
     }
 
-    // Type 2: Voler des zones (24h)
     if (!userQuests.q2 || now > userQuests.q2.expiry) {
-        const target = Math.floor(Math.random() * 5) + 1; // 1 à 5
+        const target = Math.floor(Math.random() * 5) + 1; 
         userQuests.q2 = { type: 'steal', target, current: 0, reward: target * 5, expiry: now + 86400000, label: `Voler ${target} zones à l'ennemi` };
         needUpdate = true;
     }
 
-    // Type 3: Améliorer une zone (48h)
     if (!userQuests.q3 || now > userQuests.q3.expiry) {
         userQuests.q3 = { type: 'upgrade', target: 1, current: 0, reward: 10, expiry: now + 172800000, label: "Améliorer 1 territoire" };
         needUpdate = true;
@@ -1877,7 +1817,7 @@ async function checkQuests() {
 }
 
 async function renderQuests() {
-    await checkQuests(); // On s'assure que les quêtes existent
+    await checkQuests(); 
     const snap = await get(ref(db, `users/${myUser.uid}/quests`));
     const quests = snap.val();
     const container = document.getElementById('quests-container');
@@ -1887,12 +1827,11 @@ async function renderQuests() {
         return;
     }
 
-    container.innerHTML = ""; // On vide le container
+    container.innerHTML = ""; 
 
     Object.keys(quests).forEach(key => {
         const q = quests[key];
         const isDone = q.current >= q.target;
-        // Calcul du pourcentage pour la barre
         const progressPercent = Math.min(100, (q.current / q.target) * 100);
         
         const card = document.createElement('div');
@@ -1936,15 +1875,12 @@ async function updateQuestProgress(type) {
     
     for (let key in quests) {
         let q = quests[key];
-        // On vérifie si le type correspond et si la quête n'est pas déjà finie
         if (q.type === type && q.current < q.target) {
             q.current += 1;
             hasChanged = true;
 
-            // Si elle vient de se terminer
             if (q.current >= q.target) {
                 showToast(`🏆 Quête terminée : ${q.label} ! (+${q.reward}💰)`, "#2ecc71");
-                // On donne la récompense immédiatement en local pour l'UI
                 myUser.coins += q.reward; 
                 await update(ref(db, `users/${myUser.uid}`), { coins: myUser.coins });
             }
@@ -1953,7 +1889,6 @@ async function updateQuestProgress(type) {
 
     if (hasChanged) {
         await update(ref(db, `users/${myUser.uid}/quests`), quests);
-        // Si le menu des quêtes est ouvert, on le rafraîchit
         if (!document.getElementById('quests-screen').classList.contains('hidden')) {
             renderQuests();
         }
