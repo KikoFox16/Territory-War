@@ -638,7 +638,7 @@ let tradeListener = null;
 window.initiateTrade = async (partnerUid, partnerName) => {
     const lastTradeKey = `last_req_${myUser.uid}_${partnerUid}`;
     const lastTime = localStorage.getItem(lastTradeKey);
-    if (lastTime && (Date.now() - lastTime < 30000)) {
+    if (lastTime && (Date.now() - lastTime < 10000)) { // Réduit à 10s pour le confort
         showToast("Attends un peu avant de renvoyer une demande.", "#f1c40f");
         return;
     }
@@ -650,16 +650,20 @@ window.initiateTrade = async (partnerUid, partnerName) => {
 
     if (ok) {
         localStorage.setItem(lastTradeKey, Date.now());
+        // On génère l'ID unique ici pour que le partenaire sache quel trade rejoindre
+        const tId = myUser.uid < partnerUid ? `${myUser.uid}_${partnerUid}` : `${partnerUid}_${myUser.uid}`;
+        
         await set(ref(db, `tradeRequests/${partnerUid}/${myUser.uid}`), {
             from: myUser.username,
             fromUid: myUser.uid,
+            tradeId: tId, // On transmet l'ID
             timestamp: Date.now()
         });
         showToast("Invitation envoyée !", "#3498db");
     }
 };
 
-// Écouter les invitations entrantes
+
 function listenToTradeRequests() {
     onValue(ref(db, `tradeRequests/${myUser.uid}`), async (snap) => {
         const reqs = snap.val();
@@ -673,7 +677,7 @@ function listenToTradeRequests() {
             });
 
             if (accept) {
-                const tId = myUser.uid < fromUid ? `${myUser.uid}_${fromUid}` : `${fromUid}_${myUser.uid}`;
+                const tId = r.tradeId; // Utilise l'ID envoyé par l'initiateur
                 await update(ref(db), {
                     [`trades/${tId}`]: {
                         status: "active",
@@ -689,16 +693,17 @@ function listenToTradeRequests() {
         }
     });
 
-    // Écouter si un trade devient actif pour nous
     onValue(ref(db, `trades`), (snap) => {
         const trades = snap.val();
         if (!trades) return;
+        // On cherche un trade "active" où notre UID est présent
         const activeTradeId = Object.keys(trades).find(id => id.includes(myUser.uid) && trades[id].status === "active");
         if (activeTradeId && activeTradeId !== currentTradeId) {
             openTradeScreen(activeTradeId);
         }
     });
 }
+
 
 function openTradeScreen(tradeId) {
     currentTradeId = tradeId;
@@ -772,10 +777,18 @@ document.getElementById('accept-trade').onclick = () => {
 
 document.getElementById('cancel-trade').onclick = async () => {
     if (currentTradeId) {
-        await remove(ref(db, `trades/${currentTradeId}`));
+        // On passe le statut à "closed" pour avertir l'autre joueur via l'onValue
+        await update(ref(db, `trades/${currentTradeId}`), { status: "closed" });
+        // On supprime la donnée après un court délai ou directement
+        setTimeout(async () => {
+            await set(ref(db, `trades/${currentTradeId}`), null);
+        }, 500);
+        closeTradeUI();
+    } else {
         closeTradeUI();
     }
 };
+
 
 function closeTradeUI() {
     if (tradeListener) tradeListener();
@@ -1226,13 +1239,14 @@ item.innerHTML = `
         <button style="padding: 5px 10px; font-size: 0.7rem; margin:0;" onclick="window.goToZone('${zone.id}')">VOIR</button>
         
         <button 
-            style="padding: 0; height: 35px; font-size: 0.7rem; margin:0; background:#2ecc71; 
-                   display: flex; align-items: center; justify-content: center; text-align: center;" 
-            ${myUser.coins < zone.price ? 'disabled' : ''} 
-            onclick="window.buyInShop('${zone.id}')"
-        >
-            ACHETER
-        </button>
+    style="padding: 0; height: 35px; font-size: 0.7rem; margin:0; background:#2ecc71; 
+           display: flex; align-items: center; justify-content: center; text-align: center;" 
+    ${myUser.coins < zone.price ? 'disabled' : ''} 
+    onclick="event.stopPropagation(); window.buyInShop('${zone.id}')"
+>
+    ACHETER
+</button>
+
     </div>
 `;
 
@@ -1240,6 +1254,33 @@ item.innerHTML = `
     });
 }
 
+// Fonction pour acheter directement depuis le shop
+window.buyInShop = async (zoneId) => {
+    const zoneData = allZones[zoneId];
+    if (!zoneData) return;
+
+    if (myUser.coins < zoneData.price) {
+        showToast("Fonds insuffisants !", "#e74c3c");
+        return;
+    }
+
+    const confirmBuy = await customDialog({
+        title: "Confirmer l'achat",
+        text: `Veux-tu acheter la zone ${zoneId} pour ${zoneData.price}💰 ?`
+    });
+
+    if (confirmBuy) {
+        // On appelle la fonction de transaction existante
+        await buyZone(zoneId, zoneData);
+        
+        // Fermer le shop et rafraîchir l'interface
+        document.getElementById('shop-screen').classList.add('hidden');
+        renderShop();
+        showToast("Transaction réussie !", "#2ecc71");
+    }
+};
+    
+    
 window.goToZone = (id) => {
     const parts = id.split('_');
     const targetLat = parseInt(parts[0]) * GRID_STEP_LAT;
