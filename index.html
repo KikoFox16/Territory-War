@@ -19,6 +19,23 @@
 
         .hidden { display: none !important; }
 
+/* Animation Arc-en-ciel pour les zones en enchères */
+@keyframes rainbow-glow {
+    0% { fill: #ff0000; stroke: #ff0000; }
+    20% { fill: #ffcc00; stroke: #ffcc00; }
+    40% { fill: #00ff00; stroke: #00ff00; }
+    60% { fill: #00ffff; stroke: #00ffff; }
+    80% { fill: #0000ff; stroke: #0000ff; }
+    100% { fill: #ff00ff; stroke: #ff00ff; }
+}
+
+.auction-rainbow {
+    animation: rainbow-glow 3s infinite linear;
+    stroke-width: 5px !important;
+    fill-opacity: 0.6 !important;
+}
+    
+    
 /* --- Système de Toast --- */
 #toast-container {
     position: fixed;
@@ -598,9 +615,7 @@ auctionBtn.onclick = () => {
 };
 document.getElementById('close-auction').onclick = () => auctionScreen.classList.add('hidden');
 
-// 1. Créer une enchère
 document.getElementById('btn-create-auction-trigger').onclick = async () => {
-    // Vérifier si le joueur a des zones
     const myZones = Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid);
     if (myZones.length === 0) {
         showToast("Tu n'as aucun territoire à vendre !", "#e74c3c");
@@ -612,6 +627,7 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
         text: "ID de la zone à mettre aux enchères :",
         showInput: true, placeholder: "Ex: 54285_2613"
     });
+
     if (!zoneId || !allZones[zoneId] || allZones[zoneId].ownerId !== myUser.uid) {
         showToast("Zone invalide ou ne t'appartient pas.", "#e74c3c");
         return;
@@ -622,6 +638,7 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
     const days = await customDialog({ title: "Durée", text: "Nombre de jours (1 à 5) :", showInput: true, inputType: 'number', placeholder: "Jours" });
 
     if (title && startPrice > 0 && days >= 1 && days <= 5) {
+        const expiryTime = Date.now() + (parseInt(days) * 86400000);
         const auctionData = {
             sellerId: myUser.uid,
             sellerName: myUser.username,
@@ -630,21 +647,25 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
             currentPrice: parseInt(startPrice),
             highestBidderId: null,
             highestBidderName: "Aucun",
-            expiry: Date.now() + (parseInt(days) * 86400000),
+            expiry: expiryTime,
             status: "open"
         };
 
         const newAuctionKey = 'auc_' + Date.now();
         const updates = {};
         updates[`auctions/${newAuctionKey}`] = auctionData;
-        // On verrouille la zone pour qu'elle ne soit pas vendue ailleurs
+        
+        // Verrouillage et protection arc-en-ciel
         updates[`zones/${zoneId}/forSale`] = false; 
+        updates[`zones/${zoneId}/inAuction`] = true;
+        updates[`zones/${zoneId}/protectionExpiry`] = expiryTime; // Protégée jusqu'à la fin
         
         await update(ref(db), updates);
-        showToast("Enchère lancée !", "#9b59b6");
-        writeLog('SHOP', `A lancé une enchère pour la zone ${zoneId}`);
+        showToast("Enchère lancée ! La zone est désormais protégée.", "#9b59b6");
+        writeLog('SHOP', `A lancé une enchère arc-en-ciel pour la zone ${zoneId}`);
     }
 };
+
 
 function listenToAuctions() {
     onValue(ref(db, 'auctions'), (snapshot) => {
@@ -750,21 +771,22 @@ window.bidOnAuction = async (aucId) => {
     });
 };
 
-
-// 4. Finaliser l'enchère (transfert de propriété)
 async function finalizeAuction(aucId, auc) {
     if (auc.status === "closed") return;
 
     const updates = {};
     updates[`auctions/${aucId}/status`] = "closed";
+    
+    // On retire l'état d'enchère de la zone
+    updates[`zones/${auc.zoneId}/inAuction`] = false;
 
     if (auc.highestBidderId) {
-        // Un acheteur a été trouvé
+        // Transfert de propriété
         updates[`zones/${auc.zoneId}/ownerId`] = auc.highestBidderId;
         updates[`users/${auc.highestBidderId}/coins`] = (allUsers[auc.highestBidderId]?.coins || 0) - auc.currentPrice;
         updates[`users/${auc.sellerId}/coins`] = (allUsers[auc.sellerId]?.coins || 0) + auc.currentPrice;
         
-        // Ajuster les compteurs de zones
+        // Ajuster les compteurs
         updates[`users/${auc.sellerId}/zonesCount`] = Math.max(0, (allUsers[auc.sellerId]?.zonesCount || 1) - 1);
         updates[`users/${auc.highestBidderId}/zonesCount`] = (allUsers[auc.highestBidderId]?.zonesCount || 0) + 1;
     }
@@ -1390,7 +1412,7 @@ function createZoneRectangle(zId, zone) {
         color: '#aaa',
         weight: 1,
         fillOpacity: 0.05,
-        interactive: true
+        className: '' // Ajout pour gérer les classes CSS
     };
 
     if (zone) {
@@ -1406,11 +1428,17 @@ function createZoneRectangle(zId, zone) {
             style.fillOpacity = 0.5;
         }
 
-        if (protection.active) {
+        // --- NOUVEAU : Effet Arc-en-ciel si aux Enchères ---
+        if (zone.inAuction) {
+            style.className = 'auction-rainbow';
+        } 
+        // Protection classique si pas d'enchère
+        else if (protection.active) {
             style.color = "#f1c40f"; 
             style.weight = (zone.level || 1) * 5; 
-            style.dashArray = null; 
-        } else if (zone.forSale) {
+        } 
+        
+        if (zone.forSale && !zone.inAuction) {
             style.dashArray = '5, 5'; 
         }
     }
@@ -1422,6 +1450,8 @@ function createZoneRectangle(zId, zone) {
         L.DomEvent.stopPropagation(e);
         selectZone(zId);
     });
+}
+
 }
 
 
