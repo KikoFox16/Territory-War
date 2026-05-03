@@ -19,23 +19,6 @@
 
         .hidden { display: none !important; }
 
-/* Animation Arc-en-ciel pour les zones en enchères */
-@keyframes rainbow-glow {
-    0% { fill: #ff0000; stroke: #ff0000; }
-    20% { fill: #ffcc00; stroke: #ffcc00; }
-    40% { fill: #00ff00; stroke: #00ff00; }
-    60% { fill: #00ffff; stroke: #00ffff; }
-    80% { fill: #0000ff; stroke: #0000ff; }
-    100% { fill: #ff00ff; stroke: #ff00ff; }
-}
-
-.auction-rainbow {
-    animation: rainbow-glow 3s infinite linear;
-    stroke-width: 5px !important;
-    fill-opacity: 0.6 !important;
-}
-    
-    
 /* --- Système de Toast --- */
 #toast-container {
     position: fixed;
@@ -302,7 +285,37 @@
     transform: scale(0.9); 
     background: #34495e; 
 }
+    
+@keyframes rainbow {
+    0% { stop-color: #ff0000; }
+    20% { stop-color: #ff00ff; }
+    40% { stop-color: #0000ff; }
+    60% { stop-color: #00ffff; }
+    80% { stop-color: #00ff00; }
+    100% { stop-color: #ff0000; }
+}
 
+.rainbow-zone {
+    animation: rainbow-border 3s linear infinite;
+}
+
+@keyframes rainbow-cycle {
+    from { filter: hue-rotate(0deg); }
+    to { filter: hue-rotate(360deg); }
+}
+
+.auction-rainbow {
+    /* L'animation s'applique sur tout l'élément SVG */
+    animation: rainbow-cycle 4s linear infinite !important;
+    stroke-dasharray: 10, 10;
+    /* On force le rouge comme base pour le filtre de rotation de teinte */
+    stroke: #ff0000 !important; 
+    fill: #ff0000 !important;
+    fill-opacity: 0.6 !important;
+    stroke-width: 5px !important;
+}
+
+    
 
 #friends-toggle-btn:active { 
     transform: scale(0.9); 
@@ -627,7 +640,7 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
         text: "ID de la zone à mettre aux enchères :",
         showInput: true, placeholder: "Ex: 54285_2613"
     });
-
+    
     if (!zoneId || !allZones[zoneId] || allZones[zoneId].ownerId !== myUser.uid) {
         showToast("Zone invalide ou ne t'appartient pas.", "#e74c3c");
         return;
@@ -638,7 +651,6 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
     const days = await customDialog({ title: "Durée", text: "Nombre de jours (1 à 5) :", showInput: true, inputType: 'number', placeholder: "Jours" });
 
     if (title && startPrice > 0 && days >= 1 && days <= 5) {
-        const expiryTime = Date.now() + (parseInt(days) * 86400000);
         const auctionData = {
             sellerId: myUser.uid,
             sellerName: myUser.username,
@@ -647,7 +659,7 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
             currentPrice: parseInt(startPrice),
             highestBidderId: null,
             highestBidderName: "Aucun",
-            expiry: expiryTime,
+            expiry: Date.now() + (parseInt(days) * 86400000),
             status: "open"
         };
 
@@ -655,14 +667,13 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
         const updates = {};
         updates[`auctions/${newAuctionKey}`] = auctionData;
         
-        // Verrouillage et protection arc-en-ciel
+        // Verrouillage de la zone + Marquage Arc-en-ciel
         updates[`zones/${zoneId}/forSale`] = false; 
-        updates[`zones/${zoneId}/inAuction`] = true;
-        updates[`zones/${zoneId}/protectionExpiry`] = expiryTime; // Protégée jusqu'à la fin
+        updates[`zones/${zoneId}/isAuction`] = true; 
         
         await update(ref(db), updates);
-        showToast("Enchère lancée ! La zone est désormais protégée.", "#9b59b6");
-        writeLog('SHOP', `A lancé une enchère arc-en-ciel pour la zone ${zoneId}`);
+        showToast("Enchère lancée ! Zone protégée et arc-en-ciel activé !", "#9b59b6");
+        writeLog('SHOP', `A lancé une enchère pour la zone ${zoneId}`);
     }
 };
 
@@ -706,7 +717,7 @@ function listenToAuctions() {
                 <div style="display:flex; gap:8px; margin-top:5px;">
                     <button onclick="window.goToZone('${auc.zoneId}')" 
                             style="flex:1; margin:0; background:#444; height:40px; font-size:0.8rem; font-weight:bold; border-radius:12px;">
-                        VOIR 
+                        VOIR 👀
                     </button>
                     <button onclick="window.bidOnAuction('${aucId}')" 
                             style="flex:2; margin:0; background:#2ecc71; height:40px; font-size:0.8rem; font-weight:bold; border-radius:12px; letter-spacing:1px;">
@@ -720,7 +731,6 @@ function listenToAuctions() {
 }
 
 
-// 3. Placer une mise (Sécurisé par transaction)
 window.bidOnAuction = async (aucId) => {
     // Récupérer les données actuelles de l'enchère
     const aucRef = ref(db, `auctions/${aucId}`);
@@ -776,17 +786,14 @@ async function finalizeAuction(aucId, auc) {
 
     const updates = {};
     updates[`auctions/${aucId}/status`] = "closed";
-    
     // On retire l'état d'enchère de la zone
-    updates[`zones/${auc.zoneId}/inAuction`] = false;
+    updates[`zones/${auc.zoneId}/isAuction`] = false;
 
     if (auc.highestBidderId) {
-        // Transfert de propriété
         updates[`zones/${auc.zoneId}/ownerId`] = auc.highestBidderId;
         updates[`users/${auc.highestBidderId}/coins`] = (allUsers[auc.highestBidderId]?.coins || 0) - auc.currentPrice;
         updates[`users/${auc.sellerId}/coins`] = (allUsers[auc.sellerId]?.coins || 0) + auc.currentPrice;
         
-        // Ajuster les compteurs
         updates[`users/${auc.sellerId}/zonesCount`] = Math.max(0, (allUsers[auc.sellerId]?.zonesCount || 1) - 1);
         updates[`users/${auc.highestBidderId}/zonesCount`] = (allUsers[auc.highestBidderId]?.zonesCount || 0) + 1;
     }
@@ -794,6 +801,7 @@ async function finalizeAuction(aucId, auc) {
     await update(ref(db), updates);
     console.log(`Enchère ${aucId} terminée.`);
 }
+
     
     
 function listenToFriends() {
@@ -1404,43 +1412,50 @@ function renderZonesMap() {
     }
 }
 
-
 function createZoneRectangle(zId, zone) {
     const bounds = getBoundsFromZoneId(zId);
     
+    // 1. On prépare un style par défaut "vide"
     let style = {
-        color: '#aaa',
-        weight: 1,
-        fillOpacity: 0.05,
-        className: '' // Ajout pour gérer les classes CSS
+        interactive: true,
+        className: ''
     };
 
     if (zone) {
-        const owner = allUsers[zone.ownerId];
-        const protection = getProtectionStatus(zone);
-        
-        style.color = owner ? owner.color : '#555';
-        style.weight = zone.level ? zone.level * 2 : 2;
-        style.fillOpacity = zone.forSale ? 0.6 : 0.3;
-        
-        if (zone.ownerId === myUser.uid) {
-            style.weight = (zone.level || 1) * 3;
-            style.fillOpacity = 0.5;
-        }
-
-        // --- NOUVEAU : Effet Arc-en-ciel si aux Enchères ---
-        if (zone.inAuction) {
+        // PRIORITÉ ABSOLUE : L'ENCHÈRE
+        if (zone.isAuction) {
             style.className = 'auction-rainbow';
-        } 
-        // Protection classique si pas d'enchère
-        else if (protection.active) {
-            style.color = "#f1c40f"; 
-            style.weight = (zone.level || 1) * 5; 
-        } 
-        
-        if (zone.forSale && !zone.inAuction) {
-            style.dashArray = '5, 5'; 
+            // IMPORTANT : On ne définit SURTOUT PAS 'color' ou 'fillColor' ici
+            // On laisse l'objet style sans ces propriétés.
+        } else {
+            // Style normal pour les autres zones
+            const owner = allUsers[zone.ownerId];
+            const protection = getProtectionStatus(zone);
+            
+            style.color = owner ? owner.color : '#555';
+            style.fillColor = owner ? owner.color : '#555'; // Ajout explicite du fillColor
+            style.weight = zone.level ? zone.level * 2 : 2;
+            style.fillOpacity = 0.3;
+
+            if (protection.active) {
+                style.color = "#f1c40f";
+                style.fillColor = "#f1c40f";
+                style.weight = (zone.level || 1) * 5;
+            } else if (zone.forSale) {
+                style.dashArray = '5, 5';
+                style.fillOpacity = 0.6;
+            }
+
+            if (zone.ownerId === myUser.uid) {
+                style.weight = (zone.level || 1) * 3;
+                style.fillOpacity = 0.5;
+            }
         }
+    } else {
+        // Zone libre
+        style.color = '#aaa';
+        style.weight = 1;
+        style.fillOpacity = 0.05;
     }
 
     const rect = L.rectangle(bounds, style).addTo(map);
@@ -1452,7 +1467,7 @@ function createZoneRectangle(zId, zone) {
     });
 }
 
-}
+
 
 
         function changeZone(newZoneId) {
@@ -1617,14 +1632,15 @@ function checkCurrentZoneContext() {
 
 
 
-        function captureTick() {
+function captureTick() {
     const zone = allZones[currentZoneId];
             
     const protection = getProtectionStatus(zone);
-    if (protection.active) {
+    // AJOUT : Si la zone est en enchère, elle est imprenable
+    if (protection.active || (zone && zone.isAuction)) {
         document.getElementById('capture-bar-fill').style.width = '0%';
         document.getElementById('capture-bar-fill').style.backgroundColor = '#95a5a6';
-        document.getElementById('capture-text').innerText = "🛡️ ZONE PROTÉGÉE";
+        document.getElementById('capture-text').innerText = zone && zone.isAuction ? "⚖️ ENCHÈRE EN COURS" : "🛡️ ZONE PROTÉGÉE";
         return; 
     }        
             
@@ -1641,29 +1657,27 @@ function checkCurrentZoneContext() {
 
     if (zone) {
         const lvl = zone.level || 1;
-        if (lvl === 1) targetTime = 300;       // 5 min
-        else if (lvl === 2) targetTime = 600;  // 10 min
-        else if (lvl === 3) targetTime = 1200; // 20 min
-        else if (lvl >= 4) targetTime = 1800;  // 30 min
+        if (lvl === 1) targetTime = 300;
+        else if (lvl === 2) targetTime = 600;
+        else if (lvl === 3) targetTime = 1200;
+        else if (lvl >= 4) targetTime = 1800;
     }
 
     captureTimer++;
-
     let percent = (captureTimer / targetTime) * 100;
     document.getElementById('capture-bar-fill').style.width = `${percent}%`;
     document.getElementById('capture-bar-fill').style.backgroundColor = zone ? '#e74c3c' : '#3498db';
     
     const minutes = Math.floor((targetTime - captureTimer) / 60);
     const seconds = Math.floor((targetTime - captureTimer) % 60);
-    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    
-    document.getElementById('capture-text').innerText = `Capture : ${timeString}`;
+    document.getElementById('capture-text').innerText = `Capture : ${minutes}:${seconds.toString().padStart(2, '0')}`;
 
     if (captureTimer >= targetTime) {
         clearInterval(captureInterval);
         captureZone(currentZoneId, zone);
     }
 }
+
 
 async function checkEncirclement(newZoneId) {
     const parts = newZoneId.split('_');
