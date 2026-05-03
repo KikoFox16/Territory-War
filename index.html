@@ -776,7 +776,7 @@ window.bidOnAuction = async (aucId) => {
     }).then((result) => {
         if (result.committed) {
             showToast("Offre acceptée !", "#2ecc71");
-            writeLog('SHOP', `A misé ${bidValue}💰 sur l'enchère de ${aucData.sellerName}`);
+            writeLog('ENCHÈRE', `A misé ${bidValue}💰 sur l'enchère de ${aucData.sellerName}`);
         }
     });
 };
