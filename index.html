@@ -646,7 +646,6 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
     }
 };
 
-// 2. Écouter les enchères
 function listenToAuctions() {
     onValue(ref(db, 'auctions'), (snapshot) => {
         const auctions = snapshot.val();
@@ -668,7 +667,7 @@ function listenToAuctions() {
 
             const timeLeft = Math.round((auc.expiry - Date.now()) / 3600000);
             const card = document.createElement('div');
-            card.className = 'friend-item'; // Réutilisation du style existant
+            card.className = 'friend-item'; 
             card.style.flexDirection = "column";
             card.style.alignItems = "stretch";
 
@@ -678,20 +677,27 @@ function listenToAuctions() {
                     <span style="font-size:0.7rem; color:#aaa;">⏳ ~${timeLeft}h restantes</span>
                 </div>
                 <div style="font-size:0.8rem; margin:5px 0;">Zone: ${auc.zoneId} | Vendeur: ${auc.sellerName}</div>
-                <div style="background:#000; padding:10px; border-radius:8px; margin:5px 0; border:1px solid #444;">
+                <div style="background:#000; padding:10px; border-radius:12px; margin:5px 0; border:1px solid #444;">
                     <div style="color:#f1c40f; font-weight:bold;">Prix actuel: ${auc.currentPrice} 💰</div>
                     <div style="font-size:0.75rem; color:#2ecc71;">Dernier enchérisseur: ${auc.highestBidderName}</div>
                 </div>
-                <button onclick="window.bidOnAuction('${aucId}')" 
-        style="margin:0; width:100%; background:#2ecc71; height:40px; font-size:0.8rem; font-weight:bold; border-radius:12px; letter-spacing:1px;">
-    ENCHÉRIR 💲
-</button>
-
+                
+                <div style="display:flex; gap:8px; margin-top:5px;">
+                    <button onclick="window.goToZone('${auc.zoneId}')" 
+                            style="flex:1; margin:0; background:#444; height:40px; font-size:0.8rem; font-weight:bold; border-radius:12px;">
+                        VOIR 
+                    </button>
+                    <button onclick="window.bidOnAuction('${aucId}')" 
+                            style="flex:2; margin:0; background:#2ecc71; height:40px; font-size:0.8rem; font-weight:bold; border-radius:12px; letter-spacing:1px;">
+                        ENCHÉRIR 💲
+                    </button>
+                </div>
             `;
             auctionList.appendChild(card);
         });
     });
 }
+
 
 // 3. Placer une mise (Sécurisé par transaction)
 window.bidOnAuction = async (aucId) => {
