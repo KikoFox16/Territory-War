@@ -682,7 +682,11 @@ function listenToAuctions() {
                     <div style="color:#f1c40f; font-weight:bold;">Prix actuel: ${auc.currentPrice} 💰</div>
                     <div style="font-size:0.75rem; color:#2ecc71;">Dernier enchérisseur: ${auc.highestBidderName}</div>
                 </div>
-                <button onclick="window.bidOnAuction('${aucId}')" style="margin:0; width:100%; background:#2ecc71; height:35px; font-size:0.8rem;">ENCHÉRIR</button>
+                <button onclick="window.bidOnAuction('${aucId}')" 
+        style="margin:0; width:100%; background:#2ecc71; height:40px; font-size:0.8rem; font-weight:bold; border-radius:12px; letter-spacing:1px;">
+    ENCHÉRIR 💲
+</button>
+
             `;
             auctionList.appendChild(card);
         });
@@ -691,39 +695,55 @@ function listenToAuctions() {
 
 // 3. Placer une mise (Sécurisé par transaction)
 window.bidOnAuction = async (aucId) => {
+    // Récupérer les données actuelles de l'enchère
+    const aucRef = ref(db, `auctions/${aucId}`);
+    const snapshot = await get(aucRef);
+    const aucData = snapshot.val();
+
+    if (!aucData) return;
+
+    // Blocage du vendeur
+    if (aucData.sellerId === myUser.uid) {
+        showToast("Tu ne peux pas enchérir sur ta propre zone !", "#e74c3c");
+        return;
+    }
+
     const amount = await customDialog({
         title: "Placer une offre",
-        text: "Combien proposes-tu ?",
+        text: `Prix actuel : ${aucData.currentPrice} 💰. Combien proposes-tu ?`,
         showInput: true, inputType: 'number'
     });
 
     if (!amount || isNaN(amount)) return;
     const bidValue = parseInt(amount);
 
-    if (bidValue <= 0 || bidValue > myUser.coins) {
-        showToast("Fonds insuffisants ou montant invalide !", "#e74c3c");
+    if (bidValue <= aucData.currentPrice) {
+        showToast("Ton offre doit être supérieure au prix actuel !", "#e74c3c");
         return;
     }
 
-    const auctionRef = ref(db, `auctions/${aucId}`);
-    runTransaction(auctionRef, (currentData) => {
+    if (bidValue > myUser.coins) {
+        showToast("Fonds insuffisants !", "#e74c3c");
+        return;
+    }
+
+    // Transaction sécurisée
+    runTransaction(aucRef, (currentData) => {
         if (currentData) {
-            if (bidValue <= currentData.currentPrice) {
-                return; // Annule si quelqu'un a mis plus entre temps
-            }
+            if (bidValue <= currentData.currentPrice) return; 
             currentData.currentPrice = bidValue;
             currentData.highestBidderId = myUser.uid;
             currentData.highestBidderName = myUser.username;
         }
         return currentData;
     }).then((result) => {
-        if (!result.committed) {
-            showToast("Ton offre doit être supérieure au prix actuel !", "#e74c3c");
-        } else {
+        if (result.committed) {
             showToast("Offre acceptée !", "#2ecc71");
+            writeLog('SHOP', `A misé ${bidValue}💰 sur l'enchère de ${aucData.sellerName}`);
         }
     });
 };
+
 
 // 4. Finaliser l'enchère (transfert de propriété)
 async function finalizeAuction(aucId, auc) {
@@ -2182,7 +2202,10 @@ async function updateQuestProgress(type) {
             <button id="close-auction" style="width: auto; padding: 10px; margin: 0; background: #e74c3c;">✕</button>
         </div>
         
-        <button id="btn-create-auction-trigger" style="background: #9b59b6; margin-bottom: 15px; width: 100%;">➕ CRÉER UNE ENCHÈRE</button>
+        <button id="btn-create-auction-trigger" style="background: #9b59b6; margin-bottom: 15px; width: 100%; height: 45px; border-radius: 15px; font-size: 0.8rem; letter-spacing: 1px; font-weight: bold;">
+    ➕ CRÉER UNE ENCHÈRE
+</button>
+
         
         <div id="auction-list" style="flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
             </div>
