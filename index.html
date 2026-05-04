@@ -2087,7 +2087,8 @@ async function protectZone(zoneId, plan) {
     updates[`zones/${zoneId}/protectionExpiry`] = newExpiry;
 
     await update(ref(db), updates);
-     showToast(`Bouclier activé jusqu'au ${new Date(newExpiry).toLocaleDateString()} !`, "#e74c3c");
+     writeLog('UPGRADE', `a activé un bouclier sur la zone ${zoneId} pour ${plan.label} (Coût: ${plan.cost}💰)`);
+     showToast(`🛡 Bouclier activé jusqu'au ${new Date(newExpiry).toLocaleDateString()} !`, "#e74c3c");
 }
 
 function getProtectionStatus(zone) {
