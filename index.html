@@ -786,21 +786,35 @@ async function finalizeAuction(aucId, auc) {
 
     const updates = {};
     updates[`auctions/${aucId}/status`] = "closed";
-    // On retire l'état d'enchère de la zone
+    // On retire l'état d'enchère de la zone quoi qu'il arrive
     updates[`zones/${auc.zoneId}/isAuction`] = false;
 
     if (auc.highestBidderId) {
+        // SCÉNARIO A : Il y a un vainqueur (Vente réussie)
         updates[`zones/${auc.zoneId}/ownerId`] = auc.highestBidderId;
         updates[`users/${auc.highestBidderId}/coins`] = (allUsers[auc.highestBidderId]?.coins || 0) - auc.currentPrice;
         updates[`users/${auc.sellerId}/coins`] = (allUsers[auc.sellerId]?.coins || 0) + auc.currentPrice;
         
         updates[`users/${auc.sellerId}/zonesCount`] = Math.max(0, (allUsers[auc.sellerId]?.zonesCount || 1) - 1);
         updates[`users/${auc.highestBidderId}/zonesCount`] = (allUsers[auc.highestBidderId]?.zonesCount || 0) + 1;
+        
+        console.log(`Enchère ${aucId} terminée : Vendue à ${auc.highestBidderName}`);
+    } else {
+        // SCÉNARIO B : Personne n'a misé (Zone abandonnée)
+        // On supprime la zone de la base "zones" ou on réinitialise ses valeurs
+        updates[`zones/${auc.zoneId}`] = null; 
+        
+        // On décrémente quand même le compteur du vendeur car il a perdu le territoire
+        updates[`users/${auc.sellerId}/zonesCount`] = Math.max(0, (allUsers[auc.sellerId]?.zonesCount || 1) - 1);
+        
+        console.log(`Enchère ${aucId} terminée : Aucun acheteur. La zone ${auc.zoneId} est redevenue neutre.`);
+        // Note : Si tu veux garder l'ID de la zone mais juste la vider :
+        // updates[`zones/${auc.zoneId}`] = { ownerId: null, level: 1, forSale: false };
     }
 
     await update(ref(db), updates);
-    console.log(`Enchère ${aucId} terminée.`);
 }
+
 
     
     
