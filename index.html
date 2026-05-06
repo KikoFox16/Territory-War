@@ -45,7 +45,31 @@
     animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+/* --- Toast de Connexion (Haut) --- */
+#connection-toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20000; /* Au-dessus de tout */
+    padding: 15px 25px;
+    border-radius: 15px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    backdrop-filter: blur(10px);
+    transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    border: 2px solid transparent;
+}
 
+.conn-warning { background: rgba(230, 126, 34, 0.95); border-color: #e67e22 !important; color: white; }
+.conn-danger { background: rgba(231, 76, 60, 0.95); border-color: #c0392b !important; color: white; }
+conn-pause { pointer-events: none; filter: grayscale(1);} 
+#connection-toast.hidden { top: -100px; opacity: 0; }
+
+    
 @keyframes slideUp {
     from { transform: translateY(100px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
@@ -346,6 +370,9 @@
     </style>
 </head>
 <body>
+    
+    <div id="connection-toast" class="hidden"></div>
+
 
     <div id="login-screen" class="screen">
         <h1>Territory War</h1>
@@ -537,7 +564,6 @@ async function writeLog(type, message) {
 
     try {
         const timestamp = Date.now();
-        
         const logRef = ref(db, 'logs/' + timestamp);
         await set(logRef, {
             timestamp: timestamp,
@@ -547,13 +573,17 @@ async function writeLog(type, message) {
             message: message
         });
 
+        // Mapping des couleurs Discord (Décimal)
         const colorMap = {
-            'CAPTURE': 15158332, 
-            'STEAL': 15158332,   
-            'TRADE': 15844367,   
-            'SHOP': 3066993,     
-            'UPGRADE': 10181046, 
-            'FRIEND': 3447003    
+            'CAPTURE': 3066993,   // Vert
+            'STEAL': 15158332,     // Rouge
+            'TRADE': 3447003,     // Bleu
+            'SHOP': 15844367,      // Jaune
+            'UPGRADE': 10181046,   // Violet
+            'FRIEND': 1752220,     // Turquoise
+            'NFC': 15548997,       // Rose/Flash
+            'AUCTION': 16753920,   // Orange (Enchères)
+            'QUEST': 12745742      // Or (Quêtes)
         };
 
         await fetch(DISCORD_WEBHOOK_URL, {
@@ -561,19 +591,19 @@ async function writeLog(type, message) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 embeds: [{
-                    title: `LOG : ${type}`,
-                    description: `**${myUser.username}** ${message.toLowerCase()}`,
+                    title: `[${type}]`,
+                    description: `**${myUser.username}** ${message}`,
                     color: colorMap[type] || 3447003,
                     timestamp: new Date().toISOString(),
-                    footer: { text: `ID Joueur: ${myUser.uid}` }
+                    footer: { text: `User ID: ${myUser.uid}` }
                 }]
             })
         });
-
     } catch(e) { 
-        console.error("Erreur Log/Discord:", e); 
+        console.error("Erreur Log Discord:", e); 
     }
 }
+
     
 function showToast(message, color = '#3498db') {
     const container = document.getElementById('toast-container');
@@ -673,11 +703,78 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
         
         await update(ref(db), updates);
         showToast("Enchère lancée ! Zone protégée et arc-en-ciel activé !", "#9b59b6");
-        writeLog('SHOP', `A lancé une enchère pour la zone ${zoneId}`);
+        writeLog('AUCTION', `A lancé une enchère pour la zone ${zoneId}`);
     }
 };
 
+// --- SYSTÈME DE SURVEILLANCE RÉSEAU ---
 
+function updateNetworkStatus() {
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const toast = document.getElementById('connection-toast');
+    const hud = document.getElementById('hud');
+    const mapEl = document.getElementById('map');
+    
+    let status = "ok";
+    let message = "";
+    let type = "";
+
+    // 1. Test de connexion de base
+    if (!navigator.onLine) {
+        status = "offline";
+        message = "🛑 ERREUR CONNEXION : Connexion faible, impossible de se connecter au jeu.";
+        type = "conn-danger";
+    } 
+    // 2. Test de qualité (Si l'API est supportée)
+    else if (conn) {
+        if (conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g') {
+            status = "critical";
+            message = "⚠️ CONNEXION TRÈS FAIBLE : Action impossible";
+            type = "conn-danger";
+        } else if (conn.effectiveType === '3g') {
+            status = "weak";
+            message = "📉 CONNEXION INSTABLE (3G)";
+            type = "conn-warning";
+        }
+    }
+
+    // --- Application des restrictions ---
+    if (status === "offline" || status === "critical") {
+        toast.innerHTML = `<span>${message}</span>`;
+        toast.className = `connection-toast ${type}`;
+        toast.classList.remove('hidden');
+        
+        // Pause du jeu
+        document.body.classList.add('conn-pause');
+        if (captureInterval) clearInterval(captureInterval); // Arrêt de la capture
+    } 
+    else if (status === "weak") {
+        toast.innerHTML = `<span>${message}</span>`;
+        toast.className = `connection-toast ${type}`;
+        toast.classList.remove('hidden');
+        document.body.classList.remove('conn-pause');
+        
+        // On laisse jouer en 3G mais on prévient
+    } 
+    else {
+        // Tout va bien
+        toast.classList.add('hidden');
+        document.body.classList.remove('conn-pause');
+        
+        // Relancer la capture si on est sur une zone
+        if (currentZoneId && !captureInterval) {
+            captureInterval = setInterval(captureTick, 1000);
+        }
+    }
+}
+
+// Écouteurs d'événements
+window.addEventListener('online', updateNetworkStatus);
+window.addEventListener('offline', updateNetworkStatus);
+if (navigator.connection) {
+    navigator.connection.addEventListener('change', updateNetworkStatus);
+}
+    
 function listenToAuctions() {
     onValue(ref(db, 'auctions'), (snapshot) => {
         const auctions = snapshot.val();
@@ -776,7 +873,7 @@ window.bidOnAuction = async (aucId) => {
     }).then((result) => {
         if (result.committed) {
             showToast("Offre acceptée !", "#2ecc71");
-            writeLog('ENCHÈRE', `A misé ${bidValue}💰 sur l'enchère de ${aucData.sellerName}`);
+            writeLog('AUCTION', `A misé ${bidValue}💰 sur l'enchère de ${aucData.sellerName}`);
         }
     });
 };
@@ -1188,6 +1285,7 @@ function startGame() {
     listenToFriends();
     listenToTradeRequests();
     checkQuests();
+    updateNetworkStatus();
 
 
     setTimeout(() => {
@@ -2139,6 +2237,71 @@ questsBtn.onclick = () => {
 };
 document.getElementById('close-quests').onclick = () => questsScreen.classList.add('hidden');
 
+async function handleNFCScan() {
+    if (!('NDEFReader' in window)) {
+        showToast("Le NFC n'est pas supporté par ce navigateur.", "#e74c3c");
+        return;
+    }
+
+    try {
+        const ndef = new NDEFReader();
+        await ndef.scan();
+        showToast("Approche ton Tag de Fondateur...", "#3498db");
+
+        ndef.addEventListener("reading", async ({ serialNumber }) => {
+            // Ton ID spécifique
+            const OWNER_SERIAL = "04:b0:6d:1c:6f:61:80"; 
+            
+            // Log systématique de la tentative
+            writeLog('NFC', `a tenté de scanner un NFC (ID: ${serialNumber})`);
+
+            if (serialNumber.toLowerCase() !== OWNER_SERIAL.toLowerCase()) {
+                showToast("Accès refusé : Identifiant NFC non reconnu.", "#e74c3c");
+                return;
+            }
+
+            // Si c'est le bon tag, on accorde la récompense
+            const randomChance = Math.random();
+            const updates = {};
+
+            if (randomChance < 0.4) {
+                updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + 100;
+                showToast("✨ CODE FONDATEUR : +100 pièces !", "#f1c40f");
+            } else if (randomChance < 0.8) {
+                let myZones = Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid);
+                if (myZones.length > 0) {
+                    let shuffled = myZones.sort(() => 0.5 - Math.random()).slice(0, 3);
+                    shuffled.forEach(zId => {
+                        updates[`zones/${zId}/level`] = (allZones[zId].level || 1) + 1;
+                    });
+                    showToast(`🛠 NFC : Domination renforcée !`, "#9b59b6");
+                }
+            } else {
+                let enemyZones = Object.keys(allZones).filter(id => 
+                    allZones[id].ownerId && allZones[id].ownerId !== myUser.uid && 
+                    !getProtectionStatus(allZones[id]).active
+                );
+                if (enemyZones.length > 0) {
+                    let targetId = enemyZones[Math.floor(Math.random() * enemyZones.length)];
+                    updates[`zones/${targetId}/ownerId`] = myUser.uid;
+                    showToast("🏴‍☠️ NFC : Territoire piraté avec succès !", "#e74c3c");
+                }
+            }
+
+            await update(ref(db), updates);
+            writeLog('NFC', `a validé avec succès le NFC Master Tag`);
+        });
+
+    } catch (error) {
+        showToast("Erreur NFC : " + error, "#e74c3c");
+    }
+}
+
+
+// Rendre la fonction accessible au bouton
+window.startNFC = handleNFCScan;
+    
+    
 async function checkQuests() {
     const snap = await get(ref(db, `users/${myUser.uid}/quests`));
     let userQuests = snap.val() || {};
@@ -2230,6 +2393,7 @@ async function updateQuestProgress(type) {
 
             if (q.current >= q.target) {
                 showToast(`🏆 Quête terminée : ${q.label} ! (+${q.reward}💰)`, "#2ecc71");
+                writeLog('QUEST', `a terminé la quête : "${q.label}" (+${q.reward}💰)`);
                 myUser.coins += q.reward; 
                 await update(ref(db, `users/${myUser.uid}`), { coins: myUser.coins });
             }
@@ -2252,6 +2416,8 @@ async function updateQuestProgress(type) {
     </script>
     
     <button id="debug-btn" title="Debug / Refresh">​👾</button>
+    
+    <button id="nfc-btn" onclick="window.startNFC()" title="Scanner NFC Master">📡</button>
     
     <button id="shop-toggle-btn" title="Marché Mondial">🛒</button>
 
@@ -2315,6 +2481,38 @@ async function updateQuestProgress(type) {
     backdrop-filter: blur(5px);
     transition: all 0.2s;
 }
+    
+#nfc-btn {
+    position: absolute;
+    top: 240px; /* 185px (enchères) + 45px + 10px de marge */
+    left: 20px;
+    z-index: 1500;
+    
+    width: 45px; 
+    height: 45px; 
+    padding: 0;
+    
+    border-radius: 50%;
+    background: #1a2a3a; /* Bleu foncé */
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    font-size: 1.2rem;
+    
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    backdrop-filter: blur(5px);
+    transition: all 0.2s;
+}
+
+#nfc-btn:active { 
+    transform: scale(0.9); 
+    background: #0d151d; 
+}
+    
 
 #quests-toggle-btn:active {
     transform: scale(0.9);
@@ -2477,4 +2675,4 @@ async function updateQuestProgress(type) {
     
     
 </body>
-</html>   
+    </html>
