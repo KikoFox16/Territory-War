@@ -2249,47 +2249,16 @@ async function handleNFCScan() {
         showToast("Approche ton Tag de Fondateur...", "#3498db");
 
         ndef.addEventListener("reading", async ({ serialNumber }) => {
-            // Ton ID spécifique
             const OWNER_SERIAL = "04:b0:6d:1c:6f:61:80"; 
             
-            // Log systématique de la tentative
-            writeLog('NFC', `a tenté de scanner un NFC (ID: ${serialNumber})`);
-
             if (serialNumber.toLowerCase() !== OWNER_SERIAL.toLowerCase()) {
-                showToast("Accès refusé : Identifiant NFC non reconnu.", "#e74c3c");
+                showToast("Accès refusé : Tag non reconnu.", "#e74c3c");
                 return;
             }
 
-            // Si c'est le bon tag, on accorde la récompense
-            const randomChance = Math.random();
-            const updates = {};
-
-            if (randomChance < 0.4) {
-                updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + 100;
-                showToast("✨ CODE FONDATEUR : +100 pièces !", "#f1c40f");
-            } else if (randomChance < 0.8) {
-                let myZones = Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid);
-                if (myZones.length > 0) {
-                    let shuffled = myZones.sort(() => 0.5 - Math.random()).slice(0, 3);
-                    shuffled.forEach(zId => {
-                        updates[`zones/${zId}/level`] = (allZones[zId].level || 1) + 1;
-                    });
-                    showToast(`🛠 NFC : Domination renforcée !`, "#9b59b6");
-                }
-            } else {
-                let enemyZones = Object.keys(allZones).filter(id => 
-                    allZones[id].ownerId && allZones[id].ownerId !== myUser.uid && 
-                    !getProtectionStatus(allZones[id]).active
-                );
-                if (enemyZones.length > 0) {
-                    let targetId = enemyZones[Math.floor(Math.random() * enemyZones.length)];
-                    updates[`zones/${targetId}/ownerId`] = myUser.uid;
-                    showToast("🏴‍☠️ NFC : Territoire piraté avec succès !", "#e74c3c");
-                }
-            }
-
-            await update(ref(db), updates);
-            writeLog('NFC', `a validé avec succès le NFC Master Tag`);
+            // Si le tag est bon, on ouvre la modale de choix
+            openNFCDrawModal();
+            writeLog('NFC', `a scanné le Master Tag et accède au tirage.`);
         });
 
     } catch (error) {
@@ -2297,9 +2266,87 @@ async function handleNFCScan() {
     }
 }
 
+// Nouvelle fonction pour choisir le nombre de tirages
+function openNFCDrawModal() {
+    const modal = document.getElementById('custom-modal');
+    const container = document.getElementById('modal-input-container');
+    
+    document.getElementById('modal-title').innerText = "🔮 Énergie NFC Détectée";
+    document.getElementById('modal-text').innerText = "Combien de tirages de récompenses veux-tu tenter ?";
+    document.getElementById('modal-confirm').classList.add('hidden'); // On cache le bouton valider par défaut
+    
+    container.innerHTML = '';
+    
+    // On propose 3 options de tirage
+    [1, 3, 5].forEach(count => {
+        const btn = document.createElement('button');
+        btn.style.cssText = "background: #1a2a3a; border: 2px solid #3498db; margin: 10px 0; padding: 15px; width: 100%; border-radius: 12px; color: white; font-weight: bold;";
+        btn.innerText = `${count} TIRAGE${count > 1 ? 'S' : ''}`;
+        
+        btn.onclick = () => {
+            modal.classList.add('hidden');
+            document.getElementById('modal-confirm').classList.remove('hidden');
+            processNFCRewards(count);
+        };
+        container.appendChild(btn);
+    });
+
+    modal.classList.remove('hidden');
+}
 
 // Rendre la fonction accessible au bouton
 window.startNFC = handleNFCScan;
+    
+async function processNFCRewards(times) {
+    showToast(`Lancement de ${times} tirages...`, "#9b59b6");
+    const updates = {};
+    let summary = { coins: 0, levels: 0, hacks: 0 };
+
+    for (let i = 0; i < times; i++) {
+        const randomChance = Math.random();
+
+        // 40% Chance : Pièces
+        if (randomChance < 0.4) {
+            summary.coins += 100;
+        } 
+        // 40% Chance : Upgrades de zones
+        else if (randomChance < 0.8) {
+            let myZones = Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid);
+            if (myZones.length > 0) {
+                let targetId = myZones[Math.floor(Math.random() * myZones.length)];
+                updates[`zones/${targetId}/level`] = (allZones[targetId].level || 1) + 1;
+                summary.levels++;
+            }
+        } 
+        // 20% Chance : Piratage zone ennemie
+        else {
+            let enemyZones = Object.keys(allZones).filter(id => 
+                allZones[id].ownerId && allZones[id].ownerId !== myUser.uid && 
+                !getProtectionStatus(allZones[id]).active
+            );
+            if (enemyZones.length > 0) {
+                let targetId = enemyZones[Math.floor(Math.random() * enemyZones.length)];
+                updates[`zones/${targetId}/ownerId`] = myUser.uid;
+                summary.hacks++;
+            }
+        }
+    }
+
+    // Application globale des gains
+    if (summary.coins > 0) {
+        updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + summary.coins;
+    }
+
+    await update(ref(db), updates);
+
+    // Toast de résumé
+    let resMsg = `Résultat : +${summary.coins}💰`;
+    if (summary.levels > 0) resMsg += ` | ${summary.levels} Upgrades`;
+    if (summary.hacks > 0) resMsg += ` | ${summary.hacks} Piratages`;
+    
+    showToast(resMsg, "#2ecc71");
+    writeLog('NFC', `Tirage terminé (${times}x) : ${resMsg}`);
+}
     
     
 async function checkQuests() {
@@ -2675,4 +2722,4 @@ async function updateQuestProgress(type) {
     
     
 </body>
-    </html>
+</html>b
