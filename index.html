@@ -466,9 +466,9 @@ conn-pause { pointer-events: none; filter: grayscale(1);}
         let captureTimer = 0;
         let captureInterval = null;
         let incomeInterval = null;
-        const TIME_FREE = 60; // 1 minutes
-        const TIME_STEAL = 300; // 5 minutes
-        const INCOME_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
+        const TIME_FREE = 60; 
+        const TIME_STEAL = 300; 
+        const INCOME_INTERVAL_MS = 24 * 60 * 60 * 1000; 
 
         window.onload = () => {
             const savedUid = localStorage.getItem('tw_uid');
@@ -2193,7 +2193,7 @@ async function handleNFCScan() {
     try {
         const ndef = new NDEFReader();
         await ndef.scan();
-        showToast("Approche ton Tag de Fondateur...", "#3498db");
+        showToast("Approche Tag NFC...", "#3498db");
 
         ndef.addEventListener("reading", async ({ serialNumber }) => {
             const OWNER_SERIAL = "04:b0:6d:1c:6f:61:80"; 
@@ -2204,7 +2204,7 @@ async function handleNFCScan() {
             }
 
             openNFCDrawModal();
-            writeLog('NFC', `a scanné le Master Tag et accède au tirage.`);
+            writeLog('NFC', `a scanné le Tag NFC et à accèdé au tirage.`);
         });
 
     } catch (error) {
@@ -2221,7 +2221,6 @@ function openNFCDrawModal() {
     
     container.innerHTML = '';
     
-    // Remplacement des boutons par un input numérique
     const input = document.createElement('input');
     input.type = 'number';
     input.id = 'nfc-draw-count';
@@ -2249,21 +2248,18 @@ function openNFCDrawModal() {
 }
 
 async function processNFCRewards(times) {
-    showToast(`Lancement de ${times} tirage(s) fondateur...`, "#9b59b6");
+    showToast(`Lancement de ${times} tirage(s)...`, "#9b59b6");
     const updates = {};
     let totalCoins = 0;
     let logDetails = [];
 
-    // On récupère les données actuelles pour le calcul itératif (niveaux/vols)
     for (let i = 0; i < times; i++) {
         const randomChance = Math.random();
 
-        // 1. GAIN DE PIÈCES (40% de chance)
         if (randomChance < 0.4) {
             totalCoins += 100;
             logDetails.push("+100💰");
         } 
-        // 2. AMÉLIORATION ZONE (40% de chance)
         else if (randomChance < 0.8) {
             let myZones = Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid);
             if (myZones.length > 0) {
@@ -2274,11 +2270,10 @@ async function processNFCRewards(times) {
                 updates[`zones/${targetId}/level`] = nextLvl;
                 logDetails.push(`Zone ${targetId} -> Niv.${nextLvl}`);
             } else {
-                totalCoins += 50; // Consolation si pas de zone
+                totalCoins += 50; 
                 logDetails.push("+50💰 (consolation)");
             }
         } 
-        // 3. PIRATAGE / VOL (20% de chance)
         else {
             let enemyZones = Object.keys(allZones).filter(id => 
                 allZones[id].ownerId && allZones[id].ownerId !== myUser.uid && 
@@ -2292,7 +2287,7 @@ async function processNFCRewards(times) {
                 updates[`zones/${targetId}/forSale`] = false;
                 logDetails.push(`Piratage zone ${targetId} à ${victimName}`);
             } else {
-                totalCoins += 150; // Consolation si rien à voler
+                totalCoins += 150; 
                 logDetails.push("+150💰 (pas d'ennemi)");
             }
         }
@@ -2302,11 +2297,9 @@ async function processNFCRewards(times) {
         updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + totalCoins;
     }
 
-    // Mise à jour groupée dans Firebase
     try {
         await update(ref(db), updates);
         
-        // Construction du message de log précis
         const finalMessage = `Résultat NFC (${times}x) : ` + logDetails.join(" | ");
         
         showToast(`Tirage terminé ! ${totalCoins > 0 ? '+' + totalCoins + '💰' : ''}`, "#2ecc71");
@@ -2435,7 +2428,7 @@ async function updateQuestProgress(type) {
     
     <button id="debug-btn" title="Debug / Refresh">​👾</button>
     
-    <button id="nfc-btn" onclick="window.startNFC()" title="Scanner NFC Master">📡</button>
+    <button id="nfc-btn" onclick="window.startNFC()" title="Scanner NFC">📡</button>
     
     <button id="shop-toggle-btn" title="Marché Mondial">🛒</button>
 
