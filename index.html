@@ -526,7 +526,6 @@ document.getElementById('close-friends').onclick = () => friendsScreen.classList
 
 document.getElementById('send-friend-req').onclick = async () => {
     const targetUsername = document.getElementById('add-friend-uid').value.trim();
-    console.log("Tentative d'envoi à :", targetUsername);
 
     if (!targetUsername) return;
     if (targetUsername === myUser.username) {
@@ -573,17 +572,16 @@ async function writeLog(type, message) {
             message: message
         });
 
-        // Mapping des couleurs Discord (Décimal)
         const colorMap = {
-            'CAPTURE': 3066993,   // Vert
-            'STEAL': 15158332,     // Rouge
-            'TRADE': 3447003,     // Bleu
-            'SHOP': 15844367,      // Jaune
-            'UPGRADE': 10181046,   // Violet
-            'FRIEND': 1752220,     // Turquoise
-            'NFC': 15548997,       // Rose/Flash
-            'AUCTION': 16753920,   // Orange (Enchères)
-            'QUEST': 12745742      // Or (Quêtes)
+            'CAPTURE': 3066993,
+            'STEAL': 15158332,
+            'TRADE': 3447003,
+            'SHOP': 15844367,
+            'UPGRADE': 10181046,
+            'FRIEND': 1752220,
+            'NFC': 15548997,
+            'AUCTION': 16753920,
+            'QUEST': 12745742
         };
 
         await fetch(DISCORD_WEBHOOK_URL, {
@@ -645,9 +643,7 @@ function customDialog({ title, text, showInput = false, inputType = 'text', plac
         };
     });
 }
-
-// --- SYSTÈME D'ENCHÈRES ---
-
+    
 const auctionBtn = document.getElementById('auction-toggle-btn');
 const auctionScreen = document.getElementById('auction-screen');
 const auctionList = document.getElementById('auction-list');
@@ -697,7 +693,6 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
         const updates = {};
         updates[`auctions/${newAuctionKey}`] = auctionData;
         
-        // Verrouillage de la zone + Marquage Arc-en-ciel
         updates[`zones/${zoneId}/forSale`] = false; 
         updates[`zones/${zoneId}/isAuction`] = true; 
         
@@ -706,8 +701,6 @@ document.getElementById('btn-create-auction-trigger').onclick = async () => {
         writeLog('AUCTION', `A lancé une enchère pour la zone ${zoneId}`);
     }
 };
-
-// --- SYSTÈME DE SURVEILLANCE RÉSEAU ---
 
 function updateNetworkStatus() {
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -719,13 +712,11 @@ function updateNetworkStatus() {
     let message = "";
     let type = "";
 
-    // 1. Test de connexion de base
     if (!navigator.onLine) {
         status = "offline";
         message = "🛑 ERREUR CONNEXION : Connexion faible, impossible de se connecter au jeu.";
         type = "conn-danger";
     } 
-    // 2. Test de qualité (Si l'API est supportée)
     else if (conn) {
         if (conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g') {
             status = "critical";
@@ -733,20 +724,18 @@ function updateNetworkStatus() {
             type = "conn-danger";
         } else if (conn.effectiveType === '3g') {
             status = "weak";
-            message = "📉 CONNEXION INSTABLE (3G)";
+            message = "📉 CONNEXION INSTABLE";
             type = "conn-warning";
         }
     }
 
-    // --- Application des restrictions ---
     if (status === "offline" || status === "critical") {
         toast.innerHTML = `<span>${message}</span>`;
         toast.className = `connection-toast ${type}`;
         toast.classList.remove('hidden');
         
-        // Pause du jeu
         document.body.classList.add('conn-pause');
-        if (captureInterval) clearInterval(captureInterval); // Arrêt de la capture
+        if (captureInterval) clearInterval(captureInterval); 
     } 
     else if (status === "weak") {
         toast.innerHTML = `<span>${message}</span>`;
@@ -754,21 +743,18 @@ function updateNetworkStatus() {
         toast.classList.remove('hidden');
         document.body.classList.remove('conn-pause');
         
-        // On laisse jouer en 3G mais on prévient
+
     } 
     else {
-        // Tout va bien
         toast.classList.add('hidden');
         document.body.classList.remove('conn-pause');
         
-        // Relancer la capture si on est sur une zone
         if (currentZoneId && !captureInterval) {
             captureInterval = setInterval(captureTick, 1000);
         }
     }
 }
 
-// Écouteurs d'événements
 window.addEventListener('online', updateNetworkStatus);
 window.addEventListener('offline', updateNetworkStatus);
 if (navigator.connection) {
@@ -788,7 +774,6 @@ function listenToAuctions() {
             const auc = auctions[aucId];
             if (auc.status !== "open") return;
 
-            // Vérifier expiration
             if (Date.now() > auc.expiry) {
                 finalizeAuction(aucId, auc);
                 return;
@@ -829,14 +814,12 @@ function listenToAuctions() {
 
 
 window.bidOnAuction = async (aucId) => {
-    // Récupérer les données actuelles de l'enchère
     const aucRef = ref(db, `auctions/${aucId}`);
     const snapshot = await get(aucRef);
     const aucData = snapshot.val();
 
     if (!aucData) return;
 
-    // Blocage du vendeur
     if (aucData.sellerId === myUser.uid) {
         showToast("Tu ne peux pas enchérir sur ta propre zone !", "#e74c3c");
         return;
@@ -861,7 +844,6 @@ window.bidOnAuction = async (aucId) => {
         return;
     }
 
-    // Transaction sécurisée
     runTransaction(aucRef, (currentData) => {
         if (currentData) {
             if (bidValue <= currentData.currentPrice) return; 
@@ -883,11 +865,9 @@ async function finalizeAuction(aucId, auc) {
 
     const updates = {};
     updates[`auctions/${aucId}/status`] = "closed";
-    // On retire l'état d'enchère de la zone quoi qu'il arrive
     updates[`zones/${auc.zoneId}/isAuction`] = false;
 
     if (auc.highestBidderId) {
-        // SCÉNARIO A : Il y a un vainqueur (Vente réussie)
         updates[`zones/${auc.zoneId}/ownerId`] = auc.highestBidderId;
         updates[`users/${auc.highestBidderId}/coins`] = (allUsers[auc.highestBidderId]?.coins || 0) - auc.currentPrice;
         updates[`users/${auc.sellerId}/coins`] = (allUsers[auc.sellerId]?.coins || 0) + auc.currentPrice;
@@ -895,19 +875,12 @@ async function finalizeAuction(aucId, auc) {
         updates[`users/${auc.sellerId}/zonesCount`] = Math.max(0, (allUsers[auc.sellerId]?.zonesCount || 1) - 1);
         updates[`users/${auc.highestBidderId}/zonesCount`] = (allUsers[auc.highestBidderId]?.zonesCount || 0) + 1;
         
-        console.log(`Enchère ${aucId} terminée : Vendue à ${auc.highestBidderName}`);
     } else {
-        // SCÉNARIO B : Personne n'a misé (Zone abandonnée)
-        // On supprime la zone de la base "zones" ou on réinitialise ses valeurs
         updates[`zones/${auc.zoneId}`] = null; 
         
-        // On décrémente quand même le compteur du vendeur car il a perdu le territoire
         updates[`users/${auc.sellerId}/zonesCount`] = Math.max(0, (allUsers[auc.sellerId]?.zonesCount || 1) - 1);
         
-        console.log(`Enchère ${aucId} terminée : Aucun acheteur. La zone ${auc.zoneId} est redevenue neutre.`);
-        // Note : Si tu veux garder l'ID de la zone mais juste la vider :
-        // updates[`zones/${auc.zoneId}`] = { ownerId: null, level: 1, forSale: false };
-    }
+  }
 
     await update(ref(db), updates);
 }
@@ -1015,7 +988,6 @@ window.initiateTrade = async (partnerUid, partnerName) => {
         localStorage.setItem(lastTradeKey, Date.now());
         const tId = myUser.uid < partnerUid ? `${myUser.uid}_${partnerUid}` : `${partnerUid}_${myUser.uid}`;
         
-        // On initialise l'objet trade pour éviter le "Chargement..." infini
         await update(ref(db), {
             [`trades/${tId}`]: {
                 status: "waiting",
@@ -1065,7 +1037,6 @@ function listenToTradeRequests() {
     onValue(ref(db, `trades`), (snap) => {
         const trades = snap.val();
         if (!trades) return;
-        // On rejoint si le trade est actif ET qu'on n'est pas déjà dedans
         const activeTradeId = Object.keys(trades).find(id => 
             id.includes(myUser.uid) && trades[id].status === "active"
         );
@@ -1081,12 +1052,10 @@ function openTradeScreen(tradeId) {
     
     document.getElementById('trade-screen').classList.remove('hidden');
     
-    // Reset des inputs locaux
     document.getElementById('trade-my-coins').value = "";
     const zoneSelect = document.getElementById('trade-my-zone');
     zoneSelect.innerHTML = '<option value="">-- Aucune Zone --</option>';
     
-    // Lister uniquement les zones que le joueur possède réellement
     Object.keys(allZones).forEach(id => {
         if (allZones[id].ownerId === myUser.uid) {
             zoneSelect.innerHTML += `<option value="${id}">🚩 Zone ${id}</option>`;
@@ -1109,7 +1078,6 @@ function openTradeScreen(tradeId) {
 
         document.getElementById('trade-partner-name').innerText = them.name;
 
-        // Mise à jour de l'offre adverse
         const partnerOfferDiv = document.getElementById('partner-offer');
         partnerOfferDiv.innerHTML = `
             <div style="color:#f1c40f; font-size:1.2rem;">💰 ${them.coins || 0}</div>
@@ -1119,7 +1087,6 @@ function openTradeScreen(tradeId) {
             </div>
         `;
 
-        // État du bouton local
         const btn = document.getElementById('accept-trade');
         if (me.ready) {
             btn.innerText = "OFFRE VERROUILLÉE";
@@ -1140,7 +1107,6 @@ function openTradeScreen(tradeId) {
 }
 
 
-// Actions d'input
 document.getElementById('trade-my-coins').oninput = (e) => {
     let val = Math.max(0, parseInt(e.target.value) || 0);
     if (val > myUser.coins) val = myUser.coins;
@@ -1157,9 +1123,7 @@ document.getElementById('accept-trade').onclick = () => {
 
 document.getElementById('cancel-trade').onclick = async () => {
     if (currentTradeId) {
-        // On passe le statut à "closed" pour avertir l'autre joueur via l'onValue
         await update(ref(db, `trades/${currentTradeId}`), { status: "closed" });
-        // On supprime la donnée après un court délai ou directement
         setTimeout(async () => {
             await set(ref(db, `trades/${currentTradeId}`), null);
         }, 500);
@@ -1188,7 +1152,6 @@ function startFinalCountdown(tId) {
         if (sec <= 0) {
             clearInterval(tradeCd);
             tradeCd = null;
-            // Un seul des deux déclenche la transaction (le premier dans l'alphabet)
             if (myUser.uid < tId.split('_').find(id => id !== myUser.uid)) {
                 executeTradeTransaction(tId);
             }
@@ -1219,18 +1182,15 @@ async function executeTradeTransaction(tId) {
     const u1Data = user1Snap.val();
     const u2Data = user2Snap.val();
 
-    // Verif fonds
     if (u1Data.coins < off1.coins || u2Data.coins < off2.coins) {
         showToast("Échange annulé : Fonds insuffisants.", "#e74c3c");
         await set(ref(db, `trades/${tId}`), null);
         return;
     }
 
-    // Calcul monnaie
     updates[`users/${p1}/coins`] = u1Data.coins - off1.coins + off2.coins;
     updates[`users/${p2}/coins`] = u2Data.coins - off2.coins + off1.coins;
 
-    // Échange zones
     if (off1.zoneId) {
         updates[`zones/${off1.zoneId}/ownerId`] = p2;
         updates[`zones/${off1.zoneId}/forSale`] = false;
@@ -1240,7 +1200,6 @@ async function executeTradeTransaction(tId) {
         updates[`zones/${off2.zoneId}/forSale`] = false;
     }
 
-    // Nettoyage
     updates[`trades/${tId}`] = null;
 
     try {
@@ -1527,25 +1486,20 @@ function renderZonesMap() {
 function createZoneRectangle(zId, zone) {
     const bounds = getBoundsFromZoneId(zId);
     
-    // 1. On prépare un style par défaut "vide"
     let style = {
         interactive: true,
         className: ''
     };
 
     if (zone) {
-        // PRIORITÉ ABSOLUE : L'ENCHÈRE
         if (zone.isAuction) {
             style.className = 'auction-rainbow';
-            // IMPORTANT : On ne définit SURTOUT PAS 'color' ou 'fillColor' ici
-            // On laisse l'objet style sans ces propriétés.
         } else {
-            // Style normal pour les autres zones
             const owner = allUsers[zone.ownerId];
             const protection = getProtectionStatus(zone);
             
             style.color = owner ? owner.color : '#555';
-            style.fillColor = owner ? owner.color : '#555'; // Ajout explicite du fillColor
+            style.fillColor = owner ? owner.color : '#555'; 
             style.weight = zone.level ? zone.level * 2 : 2;
             style.fillOpacity = 0.3;
 
@@ -1564,7 +1518,6 @@ function createZoneRectangle(zId, zone) {
             }
         }
     } else {
-        // Zone libre
         style.color = '#aaa';
         style.weight = 1;
         style.fillOpacity = 0.05;
@@ -1613,7 +1566,6 @@ function renderShop() {
     
     let forSale = [];
     for (let id in allZones) {
-        // CORRECTION : On n'affiche pas ses propres zones dans le shop
         if (allZones[id].forSale && allZones[id].ownerId !== myUser.uid) {
             forSale.push({ id: id, ...allZones[id] });
         }
@@ -1660,7 +1612,6 @@ function renderShop() {
 }
 
 
-// Fonction pour acheter directement depuis le shop
 window.buyInShop = async (zoneId) => {
     const zoneData = allZones[zoneId];
     if (!zoneData) return;
@@ -1676,10 +1627,8 @@ window.buyInShop = async (zoneId) => {
     });
 
     if (confirmBuy) {
-        // On appelle la fonction de transaction existante
         await buyZone(zoneId, zoneData);
         
-        // Fermer le shop et rafraîchir l'interface
         document.getElementById('shop-screen').classList.add('hidden');
         renderShop();
         showToast("Transaction réussie !", "#2ecc71");
@@ -1747,7 +1696,6 @@ function captureTick() {
     const zone = allZones[currentZoneId];
             
     const protection = getProtectionStatus(zone);
-    // AJOUT : Si la zone est en enchère, elle est imprenable
     if (protection.active || (zone && zone.isAuction)) {
         document.getElementById('capture-bar-fill').style.width = '0%';
         document.getElementById('capture-bar-fill').style.backgroundColor = '#95a5a6';
@@ -2202,7 +2150,6 @@ function getProtectionStatus(zone) {
     
 
     document.getElementById('debug-btn').addEventListener('click', () => {
-    console.log("🛠️ Mode Debug : Réinitialisation complète...");
 
     if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
@@ -2256,7 +2203,6 @@ async function handleNFCScan() {
                 return;
             }
 
-            // Si le tag est bon, on ouvre la modale de choix
             openNFCDrawModal();
             writeLog('NFC', `a scanné le Master Tag et accède au tirage.`);
         });
@@ -2266,59 +2212,73 @@ async function handleNFCScan() {
     }
 }
 
-// Nouvelle fonction pour choisir le nombre de tirages
 function openNFCDrawModal() {
     const modal = document.getElementById('custom-modal');
     const container = document.getElementById('modal-input-container');
     
-    document.getElementById('modal-title').innerText = "🔮 Énergie NFC Détectée";
+    document.getElementById('modal-title').innerText = "🔮 NFC Tag Détecté";
     document.getElementById('modal-text').innerText = "Combien de tirages de récompenses veux-tu tenter ?";
-    document.getElementById('modal-confirm').classList.add('hidden'); // On cache le bouton valider par défaut
     
     container.innerHTML = '';
     
-    // On propose 3 options de tirage
-    [1, 3, 5].forEach(count => {
-        const btn = document.createElement('button');
-        btn.style.cssText = "background: #1a2a3a; border: 2px solid #3498db; margin: 10px 0; padding: 15px; width: 100%; border-radius: 12px; color: white; font-weight: bold;";
-        btn.innerText = `${count} TIRAGE${count > 1 ? 'S' : ''}`;
-        
-        btn.onclick = () => {
-            modal.classList.add('hidden');
-            document.getElementById('modal-confirm').classList.remove('hidden');
-            processNFCRewards(count);
-        };
-        container.appendChild(btn);
-    });
+    // Remplacement des boutons par un input numérique
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.id = 'nfc-draw-count';
+    input.min = 1;
+    input.max = 100;
+    input.value = 1;
+    input.style.cssText = "width: 100%; padding: 15px; background: #000; border: 1px solid #3498db; color: white; border-radius: 12px; font-size: 1.5rem; text-align: center; margin: 15px 0;";
+    container.appendChild(input);
 
     modal.classList.remove('hidden');
+
+    document.getElementById('modal-confirm').onclick = () => {
+        const count = parseInt(document.getElementById('nfc-draw-count').value);
+        if (isNaN(count) || count <= 0) {
+            showToast("Nombre invalide !", "#e74c3c");
+            return;
+        }
+        modal.classList.add('hidden');
+        processNFCRewards(count);
+    };
+
+    document.getElementById('modal-cancel').onclick = () => {
+        modal.classList.add('hidden');
+    };
 }
 
-// Rendre la fonction accessible au bouton
-window.startNFC = handleNFCScan;
-    
 async function processNFCRewards(times) {
-    showToast(`Lancement de ${times} tirages...`, "#9b59b6");
+    showToast(`Lancement de ${times} tirage(s) fondateur...`, "#9b59b6");
     const updates = {};
-    let summary = { coins: 0, levels: 0, hacks: 0 };
+    let totalCoins = 0;
+    let logDetails = [];
 
+    // On récupère les données actuelles pour le calcul itératif (niveaux/vols)
     for (let i = 0; i < times; i++) {
         const randomChance = Math.random();
 
-        // 40% Chance : Pièces
+        // 1. GAIN DE PIÈCES (40% de chance)
         if (randomChance < 0.4) {
-            summary.coins += 100;
+            totalCoins += 100;
+            logDetails.push("+100💰");
         } 
-        // 40% Chance : Upgrades de zones
+        // 2. AMÉLIORATION ZONE (40% de chance)
         else if (randomChance < 0.8) {
             let myZones = Object.keys(allZones).filter(id => allZones[id].ownerId === myUser.uid);
             if (myZones.length > 0) {
                 let targetId = myZones[Math.floor(Math.random() * myZones.length)];
-                updates[`zones/${targetId}/level`] = (allZones[targetId].level || 1) + 1;
-                summary.levels++;
+                let currentLvl = (updates[`zones/${targetId}/level`] || allZones[targetId].level || 1);
+                let nextLvl = currentLvl + 1;
+                
+                updates[`zones/${targetId}/level`] = nextLvl;
+                logDetails.push(`Zone ${targetId} -> Niv.${nextLvl}`);
+            } else {
+                totalCoins += 50; // Consolation si pas de zone
+                logDetails.push("+50💰 (consolation)");
             }
         } 
-        // 20% Chance : Piratage zone ennemie
+        // 3. PIRATAGE / VOL (20% de chance)
         else {
             let enemyZones = Object.keys(allZones).filter(id => 
                 allZones[id].ownerId && allZones[id].ownerId !== myUser.uid && 
@@ -2326,28 +2286,39 @@ async function processNFCRewards(times) {
             );
             if (enemyZones.length > 0) {
                 let targetId = enemyZones[Math.floor(Math.random() * enemyZones.length)];
+                let victimName = allUsers[allZones[targetId].ownerId]?.username || "Inconnu";
+                
                 updates[`zones/${targetId}/ownerId`] = myUser.uid;
-                summary.hacks++;
+                updates[`zones/${targetId}/forSale`] = false;
+                logDetails.push(`Piratage zone ${targetId} à ${victimName}`);
+            } else {
+                totalCoins += 150; // Consolation si rien à voler
+                logDetails.push("+150💰 (pas d'ennemi)");
             }
         }
     }
 
-    // Application globale des gains
-    if (summary.coins > 0) {
-        updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + summary.coins;
+    if (totalCoins > 0) {
+        updates[`users/${myUser.uid}/coins`] = (myUser.coins || 0) + totalCoins;
     }
 
-    await update(ref(db), updates);
-
-    // Toast de résumé
-    let resMsg = `Résultat : +${summary.coins}💰`;
-    if (summary.levels > 0) resMsg += ` | ${summary.levels} Upgrades`;
-    if (summary.hacks > 0) resMsg += ` | ${summary.hacks} Piratages`;
-    
-    showToast(resMsg, "#2ecc71");
-    writeLog('NFC', `Tirage terminé (${times}x) : ${resMsg}`);
+    // Mise à jour groupée dans Firebase
+    try {
+        await update(ref(db), updates);
+        
+        // Construction du message de log précis
+        const finalMessage = `Résultat NFC (${times}x) : ` + logDetails.join(" | ");
+        
+        showToast(`Tirage terminé ! ${totalCoins > 0 ? '+' + totalCoins + '💰' : ''}`, "#2ecc71");
+        writeLog('NFC', finalMessage);
+        
+    } catch (error) {
+        console.error("Erreur lors des récompenses NFC:", error);
+        showToast("Erreur lors de la distribution.", "#e74c3c");
+    }
 }
-    
+
+window.startNFC = handleNFCScan;    
     
 async function checkQuests() {
     const snap = await get(ref(db, `users/${myUser.uid}/quests`));
@@ -2722,4 +2693,4 @@ async function updateQuestProgress(type) {
     
     
 </body>
-</html>b
+    </html>
